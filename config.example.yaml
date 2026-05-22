@@ -1,0 +1,81 @@
+# jobsearch-cli configuration
+# Copy this file to config.yaml and edit. config.yaml is gitignored so your
+# personal info stays out of the repo.
+
+user:
+  name: Your Name
+  email: you@example.com
+  phone: "555-555-5555"
+  location: City, ST
+  linkedin: https://linkedin.com/in/yourhandle
+  github: https://github.com/yourhandle
+
+# Resume tracks let you maintain multiple versions of your resume — e.g. one
+# focused on operations roles and one on data/analytics roles. The matcher
+# scores every job against every track and picks the best fit per job.
+resume_tracks:
+  ops:
+    path: resumes/ops_resume.txt
+    # Keywords get an extra weight on top of TF-IDF similarity.
+    keywords:
+      - client services
+      - hospitality
+      - vip
+      - events
+      - operations
+      - coordination
+  data:
+    path: resumes/data_resume.txt
+    keywords:
+      - python
+      - sql
+      - pandas
+      - scikit-learn
+      - analytics
+      - regression
+      - sports analytics
+
+# Optional hard filters — jobs that don't match these are dropped at discover time.
+filters:
+  # Drop jobs with these substrings in the title (case-insensitive)
+  exclude_title_terms:
+    - senior
+    - principal
+    - staff
+    - director
+    - vp
+    - "head of"
+  # Only keep jobs in these locations (substring match, case-insensitive).
+  # Leave empty to keep all locations.
+  include_locations:
+    - philadelphia
+    - philly
+    - remote
+    - new york
+    - nyc
+
+# Job sources — one section per ATS. The slugs are usually the same as the
+# subdomain on the company's careers page.
+#
+#   Greenhouse: https://boards.greenhouse.io/SLUG  -> use SLUG
+#   Lever:      https://jobs.lever.co/SLUG         -> use SLUG
+#   Ashby:      https://jobs.ashbyhq.com/SLUG      -> use SLUG
+sources:
+  greenhouse: []
+    # - airbnb
+    # - notion
+  lever: []
+    # - netflix
+  ashby: []
+    # - openai
+  rss:
+    []
+    # - name: Example Company Careers
+    #   url: https://example.com/careers/feed.xml
+
+# Follow-up cadence in days. "applied" means how long after applying you should
+# follow up if you haven't heard back, etc.
+followup_days:
+  applied: 7
+  interviewing: 5
+  drafted: 3

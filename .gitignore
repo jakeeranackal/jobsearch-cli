@@ -1,0 +1,50 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Local data — DO NOT commit personal info, resumes, or applications
+config.yaml
+jobsearch.db
+jobsearch.db-journal
+resumes/*.txt
+resumes/*.pdf
+resumes/*.docx
+drafts/*.md
+drafts/*.txt
+!resumes/.gitkeep
+!drafts/.gitkeep
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Test
+.pytest_cache/
+.coverage
+htmlcov/

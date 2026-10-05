@@ -1,0 +1,24 @@
+About Us
+Acme Health builds software for clinics.
+
+What you'll do
+- Build and maintain Tableau dashboards for operations leadership
+- Partner with stakeholders across finance and clinical teams
+- Write SQL to pull and validate data from Snowflake
+- Present insights to leadership
+
+Requirements
+- 2+ years of experience in data analysis
+- Advanced SQL and Tableau
+- Experience building dashboards used by stakeholders
+- Strong communication skills
+
+Nice to have
+- Python (pandas)
+- Experience with Snowflake or dbt
+- Healthcare or clinical trials background
+
+Benefits
+- Health insurance, 401k
+The salary range for this role is $75,000 - $95,000.
+Acme is an equal opportunity employer.

@@ -32,10 +32,17 @@ jobsearch.db-journal
 resumes/*.txt
 resumes/*.pdf
 resumes/*.docx
-drafts/*.md
-drafts/*.txt
+answers.yaml
+stories.yaml
+applications/
+logs/
+.secrets/
+run_daily.cmd
+run_alerts.cmd
+run_daily.sh
+run_alerts.sh
+*.html.out
 !resumes/.gitkeep
-!drafts/.gitkeep
 
 # Editors
 .vscode/
@@ -48,3 +55,4 @@ drafts/*.txt
 .pytest_cache/
 .coverage
 htmlcov/
+.ruff_cache/

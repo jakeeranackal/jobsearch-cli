@@ -1,8 +1,5 @@
 """End-to-end pipeline test using synthetic in-memory data (no network)."""
-from datetime import datetime
-from pathlib import Path
-
-from jobsearch import db, drafter
+from jobsearch import db
 
 
 def test_pipeline_upsert_score_draft(tmp_path, monkeypatch):
@@ -45,32 +42,3 @@ def test_pipeline_upsert_score_draft(tmp_path, monkeypatch):
         assert app["status"] == "drafted"
         assert app["next_followup_at"] is not None
 
-
-def test_drafter_renders_with_required_fields(tmp_path):
-    user = {
-        "name": "Test User",
-        "email": "t@example.com",
-        "phone": "555",
-        "location": "City",
-        "linkedin": "",
-        "github": "",
-    }
-    job = {
-        "title": "Data Analyst",
-        "source_company": "acme-corp",
-        "location": "Remote",
-        "url": "https://example.com/1",
-    }
-    body = drafter.render(
-        user=user, job=job, resume_track="data", score=0.42,
-        matched_keywords=["python", "sql"],
-        resume_highlights=["Built X", "Shipped Y"],
-    )
-    assert "Data Analyst" in body
-    assert "Acme Corp" in body
-    assert "Test User" in body
-    assert "python, sql" in body
-
-    out = drafter.save(tmp_path, "greenhouse:test:1", body)
-    assert out.exists()
-    assert out.read_text().startswith("Test User")

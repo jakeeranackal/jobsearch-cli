@@ -1,13 +1,16 @@
 """click-based CLI for jobsearch.
 
-Commands:
-    init        Create config.yaml and the SQLite database.
-    discover    Pull jobs from every configured source.
-    match       Score every open job against every resume track.
-    list        Show top matches.
-    draft       Generate a cover letter draft for a job.
-    track       Update an application's status.
-    followup    Show applications due for follow-up.
+Core:       setup, init, discover, match, list, add, track, applications, followup
+Per job:    analyze, prepare, check, export, contacts, ats
+Market:     keywords, companies
+Email:      email connect/sync/draft
+Interviews: interview add/list
+Insight:    stats, report, digest
+
+The tool finds, scores, analyzes, tracks and checks. Writing (resume wording,
+letters, emails, interview prep) is done by you or Claude Code.
+Automation: daily, schedule, dashboard, bot
+Network:    network import, referrals
 """
 from __future__ import annotations
 
@@ -17,55 +20,30 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import click
-import yaml
-from rich.console import Console
 from rich.table import Table
 
-from . import db, drafter, matcher
-from .sources import ashby, greenhouse, lever, rss
-
-CONFIG_PATH = Path("config.yaml")
-EXAMPLE_CONFIG = Path("config.example.yaml")
-DRAFTS_DIR = Path("drafts")
-
-console = Console()
-
-
-def load_config() -> dict:
-    if not CONFIG_PATH.exists():
-        console.print(
-            "[red]No config.yaml found.[/red] Run `jobsearch init` first.",
-        )
-        sys.exit(1)
-    return yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8"))
-
-
-def passes_filters(job: dict, filters: dict) -> bool:
-    title = (job.get("title") or "").lower()
-    loc = (job.get("location") or "").lower()
-    for term in filters.get("exclude_title_terms", []) or []:
-        if term.lower() in title:
-            return False
-    include_locs = filters.get("include_locations") or []
-    if include_locs and loc:
-        if not any(L.lower() in loc for L in include_locs):
-            return False
-    return True
+from . import db, pipeline, quality
+from .config import CONFIG_PATH, EXAMPLE_CONFIG, company_name, console, load_config
+from .pipeline import passes_filters  # noqa: F401  (kept for backward compatibility)
 
 
 @click.group()
 def cli() -> None:
-    """jobsearch — focused job search command line."""
+    """jobsearch: focused job search from the command line."""
+
+
+def _log(msg: str) -> None:
+    console.print(msg)
 
 
 @cli.command()
 def init() -> None:
     """Copy config.example.yaml to config.yaml and create the database."""
     if CONFIG_PATH.exists():
-        console.print(f"[yellow]{CONFIG_PATH} already exists — not overwriting.[/yellow]")
+        console.print(f"[yellow]{CONFIG_PATH} already exists, not overwriting.[/yellow]")
     elif EXAMPLE_CONFIG.exists():
         shutil.copy(EXAMPLE_CONFIG, CONFIG_PATH)
-        console.print(f"[green]Created {CONFIG_PATH}[/green] — edit it before running discover.")
+        console.print(f"[green]Created {CONFIG_PATH}[/green]. Edit it before running discover.")
     else:
         console.print("[red]config.example.yaml is missing.[/red]")
         sys.exit(1)
@@ -74,117 +52,45 @@ def init() -> None:
     console.print(f"[green]Initialized {db.DEFAULT_DB}[/green]")
 
     Path("resumes").mkdir(exist_ok=True)
-    Path("drafts").mkdir(exist_ok=True)
     Path("resumes/.gitkeep").touch()
-    Path("drafts/.gitkeep").touch()
 
 
 @cli.command()
 def discover() -> None:
     """Pull jobs from every configured source and store new ones."""
-    cfg = load_config()
-    filters = cfg.get("filters") or {}
-    sources_cfg = cfg.get("sources") or {}
-
-    total_new = 0
-    total_seen = 0
-
-    adapters = [
-        ("greenhouse", sources_cfg.get("greenhouse") or [], greenhouse.fetch),
-        ("lever",      sources_cfg.get("lever")      or [], lever.fetch),
-        ("ashby",      sources_cfg.get("ashby")      or [], ashby.fetch),
-    ]
-
-    with db.connect() as conn:
-        for source_name, slugs, fetcher in adapters:
-            for slug in slugs:
-                try:
-                    jobs = fetcher(slug)
-                except Exception as e:  # noqa: BLE001
-                    console.print(f"[red]{source_name}:{slug} failed: {e}[/red]")
-                    continue
-                kept_ids: set[str] = set()
-                new_here = 0
-                for j in jobs:
-                    if not passes_filters(j, filters):
-                        continue
-                    kept_ids.add(j["id"])
-                    if db.upsert_job(conn, j):
-                        new_here += 1
-                closed = db.mark_jobs_closed(conn, source_name, slug, kept_ids)
-                total_new += new_here
-                total_seen += len(kept_ids)
-                console.print(
-                    f"  {source_name}:{slug} — {len(kept_ids)} open, "
-                    f"{new_here} new, {closed} closed"
-                )
-
-        for feed in sources_cfg.get("rss") or []:
-            name, url = feed.get("name"), feed.get("url")
-            if not name or not url:
-                continue
-            try:
-                jobs = rss.fetch(name, url)
-            except Exception as e:  # noqa: BLE001
-                console.print(f"[red]rss:{name} failed: {e}[/red]")
-                continue
-            kept_ids: set[str] = set()
-            new_here = 0
-            for j in jobs:
-                if not passes_filters(j, filters):
-                    continue
-                kept_ids.add(j["id"])
-                if db.upsert_job(conn, j):
-                    new_here += 1
-            closed = db.mark_jobs_closed(conn, "rss", name, kept_ids)
-            total_new += new_here
-            total_seen += len(kept_ids)
-            console.print(
-                f"  rss:{name} — {len(kept_ids)} open, {new_here} new, {closed} closed"
-            )
-
-    console.print(f"\n[bold green]Discovered {total_seen} open jobs ({total_new} new).[/bold green]")
+    seen, new = pipeline.discover(load_config(), log=_log)
+    console.print(f"\n[bold green]Discovered {seen} open jobs ({new} new).[/bold green]")
 
 
 @cli.command()
 def match() -> None:
     """Score every open job against every configured resume track."""
     cfg = load_config()
-    tracks_cfg = cfg.get("resume_tracks") or {}
-    if not tracks_cfg:
+    if not cfg.get("resume_tracks"):
         console.print("[red]No resume_tracks configured.[/red]")
         sys.exit(1)
-
-    tracks = []
-    for name, t in tracks_cfg.items():
-        tracks.append(matcher.load_track(name, t["path"], t.get("keywords") or []))
-
-    with db.connect() as conn:
-        rows = conn.execute(
-            "SELECT id, title, description FROM jobs WHERE is_open = 1"
-        ).fetchall()
-        jobs = [(r["id"], r["title"], r["description"]) for r in rows]
-
-        if not jobs:
-            console.print("[yellow]No open jobs in the database. Run `jobsearch discover` first.[/yellow]")
-            return
-
-        for track in tracks:
-            scores = matcher.score_jobs(track, jobs)
-            for job_id, score in scores.items():
-                db.record_score(conn, job_id, track.name, score)
-            console.print(f"  Scored {len(scores)} jobs against track [bold]{track.name}[/bold]")
+    n = pipeline.match(cfg, log=_log)
+    if not n:
+        console.print("[yellow]No open jobs in the database. Run `jobsearch discover` first.[/yellow]")
 
 
 @cli.command(name="list")
 @click.option("--min-score", default=0.15, type=float, help="Minimum score to show.")
 @click.option("--limit", default=25, type=int)
 @click.option("--track", default=None, help="Filter to a single resume track.")
-def list_cmd(min_score: float, limit: int, track: str | None) -> None:
+@click.option("--fresh", "fresh_days", default=None, type=int, help="Only jobs posted in the last N days.")
+@click.option("--min-salary", default=None, type=int, help="Hide jobs whose posted max is below this.")
+@click.option("--hide-flagged", is_flag=True, help="Hide staffing agencies, stale and no-salary postings.")
+@click.option("--sort", type=click.Choice(["score", "fresh"]), default="score")
+@click.option("--show-dups", is_flag=True, help="Include duplicate postings.")
+def list_cmd(min_score: float, limit: int, track: str | None, fresh_days: int | None,
+             min_salary: int | None, hide_flagged: bool, sort: str, show_dups: bool) -> None:
     """Show top-scoring open jobs."""
+    cfg = load_config() if CONFIG_PATH.exists() else {}
+    min_salary = min_salary or (cfg.get("search") or {}).get("salary_floor")
     with db.connect() as conn:
         query = """
-        SELECT j.id, j.title, j.source_company, j.location, s.track, s.score, j.url
+        SELECT j.*, s.track, s.score
         FROM jobs j
         JOIN scores s ON s.job_id = j.id
         WHERE j.is_open = 1 AND s.score >= ?
@@ -193,9 +99,27 @@ def list_cmd(min_score: float, limit: int, track: str | None) -> None:
         if track:
             query += " AND s.track = ?"
             params.append(track)
-        query += " ORDER BY s.score DESC LIMIT ?"
-        params.append(limit)
-        rows = conn.execute(query, params).fetchall()
+        if not show_dups:
+            query += " AND j.dup_of IS NULL"
+        if hide_flagged:
+            query += " AND j.flags IS NULL"
+        if min_salary:
+            query += " AND (j.salary_max IS NULL OR j.salary_max >= ?)"
+            params.append(min_salary)
+        query += " ORDER BY s.score DESC"
+        rows = [dict(r) for r in conn.execute(query, params).fetchall()]
+
+    best: dict[str, dict] = {}
+    for r in rows:
+        best.setdefault(r["id"], r)
+    rows = list(best.values())
+    for r in rows:
+        r["age"] = quality.age_days(r)
+    if fresh_days is not None:
+        rows = [r for r in rows if r["age"] is not None and r["age"] <= fresh_days]
+    if sort == "fresh":
+        rows.sort(key=lambda r: (r["age"] if r["age"] is not None else 9999, -r["score"]))
+    rows = rows[:limit]
 
     if not rows:
         console.print("[yellow]No jobs matched. Lower --min-score or run discover/match.[/yellow]")
@@ -207,72 +131,18 @@ def list_cmd(min_score: float, limit: int, track: str | None) -> None:
     table.add_column("Title")
     table.add_column("Company")
     table.add_column("Location")
+    table.add_column("Age", justify="right")
+    table.add_column("Salary", justify="right")
+    table.add_column("Flags", style="yellow")
     table.add_column("ID", style="dim")
     for r in rows:
+        salary = f"{r['salary_min'] // 1000}-{(r['salary_max'] or r['salary_min']) // 1000}k" \
+            if r.get("salary_min") else ""
         table.add_row(
-            f"{r['score']:.3f}", r["track"], r["title"],
-            r["source_company"], r["location"] or "", r["id"],
+            f"{r['score']:.3f}", r["track"], r["title"], company_name(r), r["location"] or "",
+            f"{r['age']}d" if r["age"] is not None else "", salary, r.get("flags") or "", r["id"],
         )
     console.print(table)
-
-
-@cli.command()
-@click.argument("job_id")
-def draft(job_id: str) -> None:
-    """Generate a cover letter draft for JOB_ID. The draft is written to ./drafts/."""
-    cfg = load_config()
-    user = cfg.get("user") or {}
-    tracks_cfg = cfg.get("resume_tracks") or {}
-
-    with db.connect() as conn:
-        job_row = conn.execute(
-            "SELECT * FROM jobs WHERE id = ?", (job_id,)
-        ).fetchone()
-        if not job_row:
-            console.print(f"[red]No job with id {job_id}.[/red]")
-            sys.exit(1)
-        job = dict(job_row)
-
-        # Pick the best-scoring track for this job
-        best = conn.execute(
-            "SELECT track, score FROM scores WHERE job_id = ? ORDER BY score DESC LIMIT 1",
-            (job_id,),
-        ).fetchone()
-        if not best:
-            console.print(
-                f"[red]No score for {job_id}. Run `jobsearch match` first.[/red]"
-            )
-            sys.exit(1)
-        track_name = best["track"]
-        score = best["score"]
-
-    track_cfg = tracks_cfg[track_name]
-    resume_text = Path(track_cfg["path"]).read_text(encoding="utf-8")
-    keywords = [k.lower() for k in (track_cfg.get("keywords") or [])]
-    desc_l = (job["title"] + " " + job["description"]).lower()
-    matched = [k for k in keywords if k in desc_l]
-
-    body = drafter.render(
-        user=user,
-        job=job,
-        resume_track=track_name,
-        score=score,
-        matched_keywords=matched,
-        resume_highlights=drafter.extract_highlights(resume_text),
-    )
-    path = drafter.save(DRAFTS_DIR, job_id, body)
-
-    with db.connect() as conn:
-        db.update_application(
-            conn, job_id, "drafted",
-            followup_days=cfg.get("followup_days") or {},
-            resume_track=track_name,
-            cover_letter_path=str(path),
-        )
-
-    console.print(f"[green]Draft written:[/green] {path}")
-    console.print(f"[dim]Track: {track_name}  •  Score: {score:.3f}  •  Matched keywords: {', '.join(matched) or 'none'}[/dim]")
-    console.print("[yellow]Review and customize the marked paragraphs before sending.[/yellow]")
 
 
 @cli.command()
@@ -280,7 +150,8 @@ def draft(job_id: str) -> None:
 @click.option("--status", required=True,
               type=click.Choice(["drafted", "applied", "interviewing", "rejected", "offer", "withdrawn"]))
 @click.option("--notes", default=None)
-def track(job_id: str, status: str, notes: str | None) -> None:
+@click.option("--contact-email", default=None, help="Recruiter/hiring manager email for follow-ups.")
+def track(job_id: str, status: str, notes: str | None, contact_email: str | None) -> None:
     """Update the application status for JOB_ID."""
     cfg = load_config()
     with db.connect() as conn:
@@ -293,27 +164,60 @@ def track(job_id: str, status: str, notes: str | None) -> None:
             followup_days=cfg.get("followup_days") or {},
             notes=notes,
         )
+        if contact_email:
+            conn.execute("UPDATE applications SET contact_email = ? WHERE job_id = ?",
+                         (contact_email, job_id))
     console.print(f"[green]{job_id} -> {status}[/green]")
+
+
+@cli.command(name="applications")
+@click.option("--status", default=None,
+              type=click.Choice(["drafted", "applied", "interviewing", "rejected", "offer", "withdrawn"]))
+def applications_cmd(status: str | None) -> None:
+    """Every application you're tracking, with status and next follow-up."""
+    with db.connect() as conn:
+        sql = """SELECT a.*, j.title, j.source_company, j.company_name, j.url
+                 FROM applications a JOIN jobs j ON j.id = a.job_id"""
+        params: list = []
+        if status:
+            sql += " WHERE a.status = ?"
+            params.append(status)
+        sql += " ORDER BY COALESCE(a.next_followup_at, '9999'), a.last_update_at DESC"
+        rows = [dict(r) for r in conn.execute(sql, params)]
+    if not rows:
+        console.print("[yellow]No applications tracked yet.[/yellow]")
+        return
+    table = Table(title=f"Applications ({len(rows)})")
+    for col in ("Status", "Title", "Company", "Applied", "Next follow-up", "Notes", "ID"):
+        table.add_column(col, style="dim" if col == "ID" else None)
+    for r in rows:
+        table.add_row(r["status"], r["title"], company_name(r), (r["applied_at"] or "")[:10],
+                      (r["next_followup_at"] or "")[:10], r["notes"] or "", r["job_id"])
+    console.print(table)
+
+
+def due_followups(conn) -> list[dict]:
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    return [dict(r) for r in conn.execute(
+        """
+        SELECT a.job_id, a.status, a.applied_at, a.next_followup_at, a.contact_email,
+               j.title, j.source_company, j.company_name, j.url, a.notes
+        FROM applications a
+        JOIN jobs j ON j.id = a.job_id
+        WHERE a.next_followup_at IS NOT NULL
+          AND a.next_followup_at <= ?
+          AND a.status NOT IN ('rejected', 'offer', 'withdrawn')
+        ORDER BY a.next_followup_at ASC
+        """,
+        (now,),
+    ).fetchall()]
 
 
 @cli.command()
 def followup() -> None:
     """Show applications whose next_followup_at is in the past."""
-    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
     with db.connect() as conn:
-        rows = conn.execute(
-            """
-            SELECT a.job_id, a.status, a.applied_at, a.next_followup_at,
-                   j.title, j.source_company, j.url, a.notes
-            FROM applications a
-            JOIN jobs j ON j.id = a.job_id
-            WHERE a.next_followup_at IS NOT NULL
-              AND a.next_followup_at <= ?
-              AND a.status NOT IN ('rejected', 'offer', 'withdrawn')
-            ORDER BY a.next_followup_at ASC
-            """,
-            (now,),
-        ).fetchall()
+        rows = due_followups(conn)
 
     if not rows:
         console.print("[green]Nothing due for follow-up. Nice.[/green]")
@@ -324,13 +228,25 @@ def followup() -> None:
     table.add_column("Status", style="cyan")
     table.add_column("Title")
     table.add_column("Company")
+    table.add_column("Contact")
     table.add_column("Notes", style="dim")
     for r in rows:
         table.add_row(
             (r["next_followup_at"] or "")[:10],
-            r["status"], r["title"], r["source_company"], r["notes"] or "",
+            r["status"], r["title"], company_name(r), r["contact_email"] or "", r["notes"] or "",
         )
     console.print(table)
+
+
+def _register() -> None:
+    from .commands import apply, automation, email, find, insights, interviews, network, setup
+
+    for module in (setup, find, apply, email, interviews, insights, automation, network):
+        for command in module.COMMANDS:
+            cli.add_command(command)
+
+
+_register()
 
 
 if __name__ == "__main__":

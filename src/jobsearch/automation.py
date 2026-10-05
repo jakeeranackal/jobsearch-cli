@@ -29,7 +29,7 @@ def draft_thank_yous(cfg: dict, log: Log) -> int:
             if datetime.fromisoformat(iv["starts_at"]) + timedelta(minutes=iv["duration_min"]) > now:
                 continue
             job = db.get_job(conn, iv["job_id"])
-            subject, body = letters.thank_you_email(cfg, cfg.get("user") or {}, job, iv["interviewer"])
+            subject, body = letters.thank_you_email(cfg.get("user") or {}, job, iv["interviewer"])
             path = application_dir(iv["job_id"]) / "thank_you.md"
             path.write_text(f"To: {iv['interviewer_email'] or '[ADD]'}\nSubject: {subject}\n\n{body}\n",
                             encoding="utf-8")
@@ -58,7 +58,7 @@ def run_daily(cfg: dict, log: Log = print, alerts_only: bool = False) -> str:
         try:
             msgs = google_api.recent_messages(google_api.gmail(), days=3)
             with db.connect() as conn:
-                events = inbox.sync(conn, msgs, cfg, cfg.get("followup_days") or {})
+                events = inbox.sync(conn, msgs, cfg.get("followup_days") or {})
             for e in events:
                 if e["change"]:
                     log(f"  Email: {e['company']} {e['change'][0]} to {e['change'][1]}")

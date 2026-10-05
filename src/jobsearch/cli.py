@@ -1,10 +1,10 @@
 """click-based CLI for jobsearch.
 
 Core:       setup, init, discover, match, list, add, track, followup
-Per job:    analyze, tailor, letter, answers, apply, outreach, ats
+Per job:    analyze, tailor, check, export, letter, answers, apply, outreach, ats
 Market:     keywords, companies
 Email:      email connect/sync, followup --draft, thanks
-Interviews: interview add, prep, mock, salary
+Interviews: interview add, prep, salary
 Insight:    stats, report, digest
 Automation: daily, schedule, dashboard, bot
 Network:    network import, referrals

@@ -1,13 +1,13 @@
-"""Tailor a master resume to one job.
+"""Tailor a master resume to one job, and check edited resumes for honesty.
 
-Without Claude: reorder bullets inside each role and the skills list by what
-the job weighs most, trim each role to its strongest bullets, and list the
-edits you should make by hand.
+tailor(): reorder bullets inside each role and the skills list by what the job
+weighs most, trim each role to its strongest bullets, and list the edits still
+worth making. The actual rewording is done by you (or Claude Code) using that
+list; this module never calls an AI service.
 
-With Claude: rewrite bullets in the job's wording, from the master resume's
-facts only. A fabrication check then flags any skill or number in the output
-that isn't in the master resume, because a made-up claim costs more in the
-interview than it gains on the screen.
+check(): after a resume has been edited, recompute coverage and flag any skill
+or number that isn't in the master resume, because a made-up claim costs more
+in the interview than it gains on the screen.
 """
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ import copy
 import re
 from dataclasses import dataclass, field
 
-from . import keywords, llm, resume_io
+from . import keywords, resume_io
 from .resume_io import Item, Resume, Section
 
 _NUM = re.compile(r"\d[\d,.]*%?|\$\d[\d,.]*[kKmM]?")
@@ -29,7 +29,6 @@ class TailorResult:
     changes: list[str] = field(default_factory=list)
     todo: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
-    used_ai: bool = False
 
 
 def _term_weights(analysis: keywords.JobAnalysis) -> list[tuple[keywords.Skill, float]]:
@@ -109,9 +108,16 @@ def _todo(analysis: keywords.JobAnalysis) -> list[str]:
 
 def fabrication_check(master_text: str, tailored_text: str,
                       extra_terms: list[str] | None = None) -> list[str]:
-    """Skills or numbers in the tailored resume that the master never mentions."""
+    """Skills or numbers in the tailored resume that the master never mentions.
+
+    Rewordings the analysis itself suggests ("reports" to "dashboards") are not
+    flagged here; rewordings() lists them so they still get a second look.
+    """
     warnings = []
+    reworded = {name for name, _ in rewordings(master_text, tailored_text, extra_terms)}
     for skill in keywords.all_skills(extra_terms):
+        if skill.name in reworded:
+            continue
         if skill.count(tailored_text) and not skill.count(master_text):
             warnings.append(f"'{skill.name}' appears but isn't in your master resume. "
                             f"Remove it unless it's true.")
@@ -122,106 +128,53 @@ def fabrication_check(master_text: str, tailored_text: str,
     return warnings
 
 
-_SYSTEM = """You tailor resumes for specific job postings.
-
-Hard rules:
-- Use only facts present in the master resume. Never invent employers, titles, dates,
-  tools, metrics, degrees, or responsibilities. If the job wants something the master
-  resume doesn't show, leave it out and list it in "gaps".
-- You may reword, reorder, merge, or drop bullets, and mirror the posting's wording
-  for things the candidate actually did (e.g. "reports" -> "dashboards" only if they
-  were dashboards).
-- Keep every role, school, and date from the master resume. Keep 3-6 bullets per role,
-  strongest and most relevant first. Start bullets with a strong verb; keep results
-  and numbers that exist in the master.
-- The summary is 2-3 lines aimed at this role.
-- Plain text only, no markdown, no emojis."""
-
-_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "sections": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "title": {"type": "string"},
-                    "items": {
-                        "type": "array",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "kind": {"type": "string", "enum": ["heading", "bullet", "text"]},
-                                "text": {"type": "string"},
-                            },
-                            "required": ["kind", "text"],
-                            "additionalProperties": False,
-                        },
-                    },
-                },
-                "required": ["title", "items"],
-                "additionalProperties": False,
-            },
-        },
-        "changes": {"type": "array", "items": {"type": "string"}},
-        "gaps": {"type": "array", "items": {"type": "string"}},
-    },
-    "required": ["sections", "changes", "gaps"],
-    "additionalProperties": False,
-}
+def rewordings(master_text: str, tailored_text: str,
+               extra_terms: list[str] | None = None) -> list[tuple[str, str]]:
+    """(new skill, original word) pairs where a new term swaps in for a near-synonym."""
+    _, groups = keywords.load_lexicon()
+    master_l = master_text.lower()
+    out = []
+    for skill in keywords.all_skills(extra_terms):
+        if not skill.count(tailored_text) or skill.count(master_text):
+            continue
+        forms = {a.lower() for a in skill.aliases} | {skill.name.lower()}
+        for group in groups:
+            if not any(w in forms or w.rstrip("s") in forms for w in group):
+                continue
+            original = next((w for w in group if w not in forms
+                             and re.search(rf"\b{re.escape(w)}\b", master_l)), None)
+            if original:
+                out.append((skill.name, original))
+                break
+    return out
 
 
-def _analysis_table(analysis: keywords.JobAnalysis) -> str:
-    rows = [f"- {t.term}: job mentions {t.job_count}x ({t.importance}); "
-            f"resume bullets {t.resume_bullets}, skills list {t.resume_skills}; {t.status}"
-            for t in analysis.terms[:25]]
-    rows += [f"- wording: job says '{j}', resume says '{r}'" for j, r in analysis.wording]
-    return "\n".join(rows)
-
-
-def _ai_rewrite(cfg: dict, job: dict, master: Resume, analysis: keywords.JobAnalysis) -> tuple[Resume, list[str], list[str]]:
-    prompt = (
-        f"JOB: {job.get('title')} at {job.get('company_name') or job.get('source_company')}\n\n"
-        f"POSTING:\n{job.get('description', '')[:12000]}\n\n"
-        f"KEYWORD ANALYSIS (what they weigh vs. what the resume shows):\n{_analysis_table(analysis)}\n\n"
-        f"MASTER RESUME (the only source of facts):\n{master.to_text()}\n\n"
-        "Return the tailored resume sections (not the name/contact header), a short list "
-        "of what you changed, and the requirements you could not support from the master resume."
-    )
-    data = llm.ask_json(cfg, _SYSTEM, prompt, _SCHEMA, effort="high")
-    out = Resume(header=list(master.header))
-    for s in data["sections"]:
-        out.sections.append(Section(
-            title=s["title"],
-            items=[Item(i["kind"], i["text"].strip()) for i in s["items"] if i["text"].strip()],
-        ))
-    return out, data.get("changes") or [], data.get("gaps") or []
-
-
-def tailor(job: dict, master_text: str, cfg: dict | None = None, *,
-           extra_terms: list[str] | None = None, use_ai: bool = True,
+def tailor(job: dict, master_text: str, *, extra_terms: list[str] | None = None,
            max_bullets: int = 5) -> TailorResult:
     analysis = keywords.analyze_job(job, master_text, extra_terms)
-    master = resume_io.parse(master_text)
-
-    if use_ai and llm.available(cfg):
-        tailored, changes, gaps = _ai_rewrite(cfg or {}, job, master, analysis)
-        todo = [f"Not supported by your resume: {g}" for g in gaps]
-        used_ai = True
-    else:
-        tailored = copy.deepcopy(master)
-        changes = list(dict.fromkeys(_reorder(tailored, analysis, max_bullets)))
-        todo = _todo(analysis)
-        used_ai = False
-
-    tailored_text = tailored.to_text()
-    after = keywords.analyze_job(job, tailored_text, extra_terms)
+    tailored = copy.deepcopy(resume_io.parse(master_text))
+    changes = list(dict.fromkeys(_reorder(tailored, analysis, max_bullets)))
+    after = keywords.analyze_job(job, tailored.to_text(), extra_terms)
     return TailorResult(
         resume=tailored,
         coverage_before=analysis.coverage,
         coverage_after=after.coverage,
         changes=changes,
-        todo=todo,
-        warnings=fabrication_check(master_text, tailored_text, extra_terms) if used_ai else [],
-        used_ai=used_ai,
+        todo=_todo(analysis),
+    )
+
+
+def check(job: dict, master_text: str, edited_text: str,
+          extra_terms: list[str] | None = None) -> TailorResult:
+    """Score an edited resume against the job and the master resume."""
+    before = keywords.analyze_job(job, master_text, extra_terms)
+    after = keywords.analyze_job(job, edited_text, extra_terms)
+    return TailorResult(
+        resume=resume_io.parse(edited_text),
+        coverage_before=before.coverage,
+        coverage_after=after.coverage,
+        changes=[f"'{new}' replaces '{old}'. Fine if accurate."
+                 for new, old in rewordings(master_text, edited_text, extra_terms)],
+        todo=_todo(after),
+        warnings=fabrication_check(master_text, edited_text, extra_terms),
     )

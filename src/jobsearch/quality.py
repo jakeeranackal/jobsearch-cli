@@ -66,13 +66,14 @@ def refresh(conn: sqlite3.Connection) -> dict[str, int]:
     """Recompute salary, flags and duplicates for every open job."""
     rows = [dict(r) for r in conn.execute("SELECT * FROM jobs WHERE is_open = 1 ORDER BY discovered_at")]
     seen: dict[tuple, str] = {}
-    counts = {"salary": 0, "flagged": 0, "duplicates": 0}
+    counts = {"salary": 0, "with_salary": 0, "flagged": 0, "duplicates": 0}
     for job in rows:
         if not job.get("salary_min"):
             sal = jd.extract_salary(job.get("description") or "")
             if sal:
                 job["salary_min"], job["salary_max"] = sal
                 counts["salary"] += 1
+        counts["with_salary"] += bool(job.get("salary_min"))
         f = flags(job)
         counts["flagged"] += bool(f)
         key = (norm(job.get("company_name") or job["source_company"]), norm(job["title"]),

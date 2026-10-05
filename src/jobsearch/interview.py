@@ -1,7 +1,7 @@
-"""Interview prep: prep sheets, a STAR story bank, mock interviews, salary scripts."""
+"""Interview prep: prep sheets, a STAR story bank, salary scripts."""
 from __future__ import annotations
 
-from . import keywords, llm, resume_io
+from . import keywords, resume_io
 from .config import company_name
 
 BEHAVIORAL = [
@@ -40,7 +40,7 @@ def _evidence(resume_text: str, term: str) -> str:
     return ""
 
 
-def prep_sheet(cfg: dict, job: dict, resume_text: str, analysis: keywords.JobAnalysis,
+def prep_sheet(job: dict, resume_text: str, analysis: keywords.JobAnalysis,
                stories: list[dict], brief: str | None = None) -> str:
     company = company_name(job)
     lines = [f"# Interview prep: {job.get('title')} at {company}", ""]
@@ -68,55 +68,22 @@ def prep_sheet(cfg: dict, job: dict, resume_text: str, analysis: keywords.JobAna
         lines += ["No matching stories yet. Add some to stories.yaml (see stories.example.yaml).", ""]
 
     lines += ["## Likely questions", ""]
-    if llm.available(cfg):
-        prompt = (
-            f"Role: {job.get('title')} at {company}\n\nPOSTING:\n{(job.get('description') or '')[:8000]}\n\n"
-            f"CANDIDATE RESUME:\n{resume_text}\n\n"
-            "List the 12 questions this candidate is most likely to get, mixing behavioral, "
-            "technical (on the posting's tools), and role-specific ones. For each: the question, "
-            "what the interviewer is really testing, and which resume item to answer with. "
-            "Then 5 sharp questions the candidate should ask them. Markdown, concise."
-        )
-        lines.append(llm.ask_text(cfg, "You are an experienced hiring manager and interview coach.",
-                                  prompt, effort="medium"))
-    else:
-        lines += [f"- {q}" for q in BEHAVIORAL]
-        lines += [f"- Walk me through how you've used {t.term}. What was the result?"
-                  for t in analysis.top_requirements[:5]]
-        lines += ["", "## Questions to ask them", "",
-                  "- What does success look like in the first 90 days?",
-                  "- What's the biggest challenge the team is facing right now?",
-                  "- How does this role work with the rest of the team day to day?",
-                  "- What do the best people in this role do differently?",
-                  "- What are the next steps in the process?"]
+    lines += [f"- {q}" for q in BEHAVIORAL]
+    lines += [f"- Walk me through how you've used {t.term}. What was the result?"
+              for t in analysis.top_requirements[:5]]
+    lines += ["", "## Questions to ask them", "",
+              "- What does success look like in the first 90 days?",
+              "- What's the biggest challenge the team is facing right now?",
+              "- How does this role work with the rest of the team day to day?",
+              "- What do the best people in this role do differently?",
+              "- What are the next steps in the process?",
+              "", "_Tip: ask Claude Code to run a mock interview from this sheet._"]
     if brief:
         lines += ["", "---", "", brief]
     return "\n".join(lines) + "\n"
 
 
-def mock_question(cfg: dict, job: dict, resume_text: str, asked: list[str]) -> str:
-    prompt = (
-        f"You're interviewing a candidate for {job.get('title')} at {company_name(job)}.\n"
-        f"POSTING:\n{(job.get('description') or '')[:6000]}\n\nRESUME:\n{resume_text}\n\n"
-        f"Already asked: {asked or 'nothing yet'}\n"
-        "Ask the next single interview question. Vary between behavioral and technical. "
-        "Output only the question."
-    )
-    return llm.ask_text(cfg, "You are a realistic, fair hiring manager.", prompt, effort="low")
-
-
-def mock_feedback(cfg: dict, job: dict, question: str, answer: str) -> str:
-    prompt = (
-        f"Role: {job.get('title')} at {company_name(job)}\nQuestion: {question}\n"
-        f"Candidate's answer: {answer}\n\n"
-        "Grade 1-5. Then: what worked, what was missing (structure, specifics, result, "
-        "relevance to the role), and a tighter 3-4 sentence version of their answer that uses "
-        "only facts they gave. Be direct and brief."
-    )
-    return llm.ask_text(cfg, "You are a blunt but kind interview coach.", prompt, effort="low")
-
-
-def salary_help(cfg: dict, job: dict, analysis: keywords.JobAnalysis, location: str = "") -> str:
+def salary_help(job: dict, analysis: keywords.JobAnalysis) -> str:
     company = company_name(job)
     lines = [f"# Salary: {job.get('title')} at {company}", ""]
     if analysis.salary:
@@ -125,12 +92,6 @@ def salary_help(cfg: dict, job: dict, analysis: keywords.JobAnalysis, location: 
                      f"anchor around ${int(lo + (hi - lo) * 0.75):,}.")
     else:
         lines.append("No posted range. Check levels.fyi, Glassdoor, and the BLS for this title and city.")
-    if llm.available(cfg):
-        prompt = (f"Role: {job.get('title')} at {company}, location {job.get('location') or location}. "
-                  f"Posted range: {analysis.salary or 'none'}. Give a rough market base-salary range "
-                  "from general knowledge, clearly labeled as an estimate to verify, and list "
-                  "non-salary levers to negotiate. Short markdown.")
-        lines += ["", llm.ask_text(cfg, "You are a compensation advisor.", prompt, effort="low")]
     lines += ["", "## Scripts", "",
               "**When asked for expectations early:** \"I'm focused on finding the right fit. "
               "Could you share the budgeted range for the role?\"",

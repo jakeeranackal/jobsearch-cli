@@ -50,7 +50,7 @@ def sync(days: int, dry_run: bool) -> None:
     cfg = load_config()
     messages = google_api.recent_messages(_gmail_or_exit(), days=days)
     with db.connect() as conn:
-        events = inbox.sync(conn, messages, cfg, cfg.get("followup_days") or {}, dry_run=dry_run)
+        events = inbox.sync(conn, messages, cfg.get("followup_days") or {}, dry_run=dry_run)
     if not events:
         console.print(f"Read {len(messages)} emails; none matched your applications.")
         return
@@ -69,7 +69,7 @@ def queue_followups(cfg: dict, rows: list[dict], send: bool = False) -> None:
     with db.connect() as conn:
         for r in rows:
             job = db.get_job(conn, r["job_id"])
-            subject, body = letters.followup_email(cfg, user, job, r["status"])
+            subject, body = letters.followup_email(user, job)
             to = r.get("contact_email")
             path = application_dir(r["job_id"]) / "followup.md"
             path.write_text(f"To: {to or '[ADD recipient]'}\nSubject: {subject}\n\n{body}\n", encoding="utf-8")
@@ -101,7 +101,7 @@ def thanks(job_id: str, to_email: str | None, interviewer: str | None, notes: st
     if not job:
         console.print(f"[red]No job with id {job_id}.[/red]")
         sys.exit(1)
-    subject, body = letters.thank_you_email(cfg, cfg.get("user") or {}, job, interviewer, notes)
+    subject, body = letters.thank_you_email(cfg.get("user") or {}, job, interviewer, notes)
     path = application_dir(job_id) / "thank_you.md"
     path.write_text(f"To: {to_email or '[ADD]'}\nSubject: {subject}\n\n{body}\n", encoding="utf-8")
     if to_email and google_api.is_configured():

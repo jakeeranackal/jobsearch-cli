@@ -38,7 +38,6 @@ def project(tmp_path, monkeypatch, resume_text):
     """A throwaway project folder with config, resume and DB; cwd set to it."""
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(db, "DEFAULT_DB", tmp_path / "jobsearch.db")
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.setattr(company, "wikipedia_summary", lambda name, timeout=10.0: None)
     (tmp_path / "resumes").mkdir()
     (tmp_path / "resumes" / "data.txt").write_text(resume_text, encoding="utf-8")
@@ -46,7 +45,7 @@ def project(tmp_path, monkeypatch, resume_text):
         "user: {name: Jordan Lee, email: jordan@example.com}\n"
         "resume_tracks:\n  data: {path: resumes/data.txt, keywords: [sql, tableau]}\n"
         "sources: {}\nfollowup_days: {applied: 7, interviewing: 5, drafted: 3}\n"
-        "llm: {enabled: false}\nnotify: {channel: none}\n",
+        "notify: {channel: none}\n",
         encoding="utf-8",
     )
     db.init_db(tmp_path / "jobsearch.db")

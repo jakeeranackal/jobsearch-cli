@@ -1,15 +1,13 @@
 """`jobsearch setup`: guided first run. A new user goes from nothing to first results."""
 from __future__ import annotations
 
-import os
-import platform
 import shutil
 from collections import Counter
 from pathlib import Path
 
 import click
 
-from .. import company, db, google_api, keywords, llm, pipeline, resume_io
+from .. import company, db, google_api, keywords, pipeline, resume_io
 from ..config import (ANSWERS_PATH, CONFIG_PATH, RESUMES_DIR, SECRETS_DIR, STORIES_PATH,
                       console, save_config, try_load_config)
 from ..sources import manual
@@ -125,26 +123,13 @@ def setup() -> None:
                     "include_title_terms": roles if strict else []},
         "sources": sources,
         "followup_days": cfg.get("followup_days") or DEFAULT_FOLLOWUP,
-        "llm": cfg.get("llm") or {"model": llm.DEFAULT_MODEL, "effort": llm.DEFAULT_EFFORT},
         "tailor": cfg.get("tailor") or {"max_bullets_per_role": 5},
         "digest": cfg.get("digest") or {"min_score": 0.2, "max_items": 10, "weekly_report_day": "monday"},
         "alerts": cfg.get("alerts") or {"min_score": 0.35},
-        "email": cfg.get("email") or {"draft_followups": True, "auto_send_followups": False,
-                                      "ai_classify": False},
+        "email": cfg.get("email") or {"draft_followups": True, "auto_send_followups": False},
     }
 
-    _step(5, "AI writing (optional, recommended)")
-    if llm.available(new_cfg):
-        console.print("  [green]Claude API key found.[/green] Tailoring and drafts will use Claude.")
-    else:
-        console.print("  No Claude API key found. Everything works without one, but resume rewrites and")
-        console.print("  drafts are much better with it. Get a key at console.anthropic.com, then:")
-        if platform.system() == "Windows":
-            console.print('    [bold]setx ANTHROPIC_API_KEY "sk-ant-..."[/bold]  (then open a new terminal)')
-        else:
-            console.print('    [bold]export ANTHROPIC_API_KEY="sk-ant-..."[/bold]  (add it to ~/.zshrc or ~/.bashrc)')
-
-    _step(6, "Where should daily updates go?")
+    _step(5, "Where should daily updates go?")
     channel = click.prompt("  Channel", type=click.Choice(["none", "telegram", "gmail", "smtp"]),
                            default=(cfg.get("notify") or {}).get("channel") or "none")
     notify_cfg: dict = {"channel": channel}
@@ -186,13 +171,6 @@ def setup() -> None:
                       "and [bold]jobsearch apply <id>[/bold].")
     else:
         console.print("\nNext: add companies with `jobsearch companies add <url>`, then `jobsearch discover`.")
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        return
-    if click.confirm("Suggest similar companies to watch with Claude?", default=False):
-        like = click.prompt("  Companies you like (comma separated)")
-        for c in company.suggest(new_cfg, [x.strip() for x in like.split(",")], roles, locations):
-            console.print(f"  {c['name']}: {c['source']}:{c['slug']} ({c['open_jobs']} jobs). {c['why']}")
-        console.print("  Add the ones you want with `jobsearch companies suggest --like ... --add`.")
 
 
 COMMANDS = [setup]

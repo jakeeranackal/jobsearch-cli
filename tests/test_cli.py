@@ -2,12 +2,11 @@ import json
 import threading
 import urllib.error
 import urllib.request
-from types import SimpleNamespace
 
 import pytest
 from click.testing import CliRunner
 
-from jobsearch import dashboard, db, llm
+from jobsearch import dashboard, db
 from jobsearch.cli import cli
 
 
@@ -17,7 +16,7 @@ def _run(*args, input=None):
     return result.output
 
 
-def test_add_analyze_apply_flow(project, jd_text):
+def test_add_analyze_apply_check_export_flow(project, jd_text):
     (project / "listing.txt").write_text(jd_text, encoding="utf-8")
     out = _run("add", "--file", "listing.txt", "--title", "Data Analyst", "--company", "Acme Health")
     assert "Added" in out
@@ -28,14 +27,27 @@ def test_add_analyze_apply_flow(project, jd_text):
     out = _run("analyze", job_id)
     assert "BURIED" in out and "Tableau" in out
 
-    _run("apply", job_id, "--no-ai", "--no-open", "--applied")
+    _run("apply", job_id, "--no-open", "--applied")
     folder = next((project / "applications").iterdir())
     names = {p.name for p in folder.iterdir()}
-    assert {"analysis.md", "cover_letter.md", "tailor_notes.md"} <= names
-    assert any(n.endswith(".docx") for n in names)
+    assert {"analysis.md", "cover_letter.md", "tailor_notes.md", "CLAUDE_BRIEF.md"} <= names
+    brief = (folder / "CLAUDE_BRIEF.md").read_text(encoding="utf-8")
+    assert "Never submit" in brief and f"jobsearch check {job_id}" in brief
     with db.connect() as conn:
         app = db.get_application(conn, job_id)
     assert app["status"] == "applied" and app["resume_path"]
+
+    # Simulate Claude Code editing the resume, then check and export it
+    md = next(folder.glob("*_Resume_*.md"))
+    md.write_text(md.read_text(encoding="utf-8").replace(
+        "Built Excel reports", "Built Tableau dashboards"), encoding="utf-8")
+    out = _run("check", job_id)
+    assert "Nothing invented" in out
+    md.write_text(md.read_text(encoding="utf-8") + "- Led a Snowflake migration\n", encoding="utf-8")
+    assert "Snowflake" in _run("check", job_id)
+    _run("export", job_id)
+    from jobsearch import resume_io
+    assert "Tableau dashboards" in resume_io.read_text(md.with_suffix(".docx"))
 
     assert "Applications sent: 1" in _run("report")
     assert "Data Analyst" in _run("digest", "--all")
@@ -65,39 +77,12 @@ def test_dashboard_api(project, job):
         srv.shutdown()
 
 
-class _FakeMessages:
-    def __init__(self, response):
-        self.response, self.kwargs = response, None
+def test_no_ai_dependency_anywhere():
+    import pathlib
 
-    def create(self, **kwargs):
-        self.kwargs = kwargs
-        return self.response
+    import jobsearch
 
-
-def _fake_client(monkeypatch, response):
-    messages = _FakeMessages(response)
-    client = SimpleNamespace(beta=SimpleNamespace(messages=messages))
-    monkeypatch.setattr(llm, "_client", lambda: client)
-    return messages
-
-
-def test_llm_request_shape(monkeypatch):
-    resp = SimpleNamespace(stop_reason="end_turn",
-                           content=[SimpleNamespace(type="text", text='{"a": 1}')])
-    messages = _fake_client(monkeypatch, resp)
-    assert llm.ask_json({"llm": {"effort": "low"}}, "sys", "hi", {"type": "object"}) == {"a": 1}
-    kw = messages.kwargs
-    assert kw["model"] == llm.DEFAULT_MODEL
-    assert kw["fallbacks"] == "default" and llm.FALLBACK_BETA in kw["betas"]
-    assert kw["output_config"]["effort"] == "low"
-    assert kw["output_config"]["format"]["type"] == "json_schema"
-
-
-def test_llm_refusal_raises(monkeypatch):
-    _fake_client(monkeypatch, SimpleNamespace(stop_reason="refusal", content=[]))
-    with pytest.raises(llm.LLMError):
-        llm.ask_text({}, "sys", "hi")
-
-
-def test_llm_disabled_by_config():
-    assert llm.available({"llm": {"enabled": False}}) is False
+    src = pathlib.Path(jobsearch.__file__).parent
+    for py in src.rglob("*.py"):
+        text = py.read_text(encoding="utf-8")
+        assert "anthropic" not in text.lower(), py

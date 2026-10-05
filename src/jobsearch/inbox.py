@@ -1,14 +1,13 @@
 """Read recruiter emails, match them to applications, and update status.
 
-Classification is keyword rules first (fast, free, explainable). Claude is
-only asked about emails the rules can't place, and only if enabled.
+Classification is keyword rules: fast, free, and explainable. Anything the
+rules can't place is recorded as "other" and left alone.
 """
 from __future__ import annotations
 
 import re
 import sqlite3
 
-from . import llm
 from .quality import norm
 
 RULES = [
@@ -30,7 +29,7 @@ RANK = {"drafted": 0, "applied": 1, "interviewing": 2, "rejected": 3, "offer": 4
 TARGET_STATUS = {"rejection": "rejected", "interview": "interviewing", "offer": "offer"}
 
 
-def classify(subject: str, body: str, cfg: dict | None = None) -> str:
+def classify(subject: str, body: str) -> str:
     text = f"{subject}\n{body}"
     for label, rx in RULES:
         if rx.search(text):
@@ -38,13 +37,6 @@ def classify(subject: str, body: str, cfg: dict | None = None) -> str:
             if label == "rejection" and RULES[2][1].search(subject):
                 return "interview"
             return label
-    if cfg and (cfg.get("email") or {}).get("ai_classify") and llm.available(cfg):
-        schema = {"type": "object", "properties": {"label": {"type": "string", "enum": [
-            "offer", "rejection", "interview", "ack", "other"]}}, "required": ["label"],
-            "additionalProperties": False}
-        out = llm.ask_json(cfg, "Classify job-application emails.",
-                           f"Subject: {subject}\n\n{body[:3000]}", schema, effort="low")
-        return out["label"]
     return "other"
 
 
@@ -64,7 +56,7 @@ def match_job(msg: dict, apps: list[dict]) -> dict | None:
     return best
 
 
-def sync(conn: sqlite3.Connection, messages: list[dict], cfg: dict | None = None,
+def sync(conn: sqlite3.Connection, messages: list[dict],
          followup_days: dict | None = None, dry_run: bool = False) -> list[dict]:
     from . import db
 
@@ -80,7 +72,7 @@ def sync(conn: sqlite3.Connection, messages: list[dict], cfg: dict | None = None
         app = match_job(msg, apps)
         if not app:
             continue
-        label = classify(msg["subject"], msg["body"] or msg["snippet"], cfg)
+        label = classify(msg["subject"], msg["body"] or msg["snippet"])
         new_status = TARGET_STATUS.get(label)
         change = None
         if new_status and RANK[new_status] > RANK.get(app["status"], 0):

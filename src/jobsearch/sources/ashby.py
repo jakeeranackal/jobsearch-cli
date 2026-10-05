@@ -33,5 +33,18 @@ def fetch(slug: str, *, timeout: float = 15.0) -> list[dict]:
             ),
             "url": j.get("jobUrl") or j.get("applyUrl", ""),
             "posted_at": j.get("publishedAt") or j.get("updatedAt"),
+            **_salary(j.get("compensation") or {}),
         })
     return out
+
+
+def _salary(comp: dict) -> dict:
+    """Annual salary range from Ashby's structured compensation, if posted."""
+    for c in comp.get("summaryComponents") or []:
+        if c.get("compensationType") != "Salary" or not c.get("minValue"):
+            continue
+        lo, hi = c["minValue"], c.get("maxValue") or c["minValue"]
+        if "HOUR" in (c.get("interval") or ""):
+            lo, hi = lo * 2080, hi * 2080
+        return {"salary_min": int(lo), "salary_max": int(hi)}
+    return {}

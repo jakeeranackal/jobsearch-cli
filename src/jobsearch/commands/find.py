@@ -8,7 +8,7 @@ from pathlib import Path
 import click
 from rich.table import Table
 
-from .. import company, db, keywords, llm, pipeline, quality
+from .. import company, db, keywords, pipeline, quality
 from ..config import console, load_config, save_config
 from ..sources import manual
 
@@ -48,19 +48,6 @@ def add(paste: bool, file_: str | None, url: str | None, title: str | None,
         job = {"description": text, "url": url or ""}
 
     if "id" not in job:
-        if llm.available(cfg) and not (title and company_):
-            schema = {"type": "object", "properties": {
-                "title": {"type": "string"}, "company": {"type": "string"},
-                "location": {"type": "string"}}, "required": ["title", "company", "location"],
-                "additionalProperties": False}
-            try:
-                meta = llm.ask_json(cfg, "Extract job posting metadata. Use '' if unknown.",
-                                    job["description"][:6000], schema, effort="low")
-                title = title or meta["title"]
-                company_ = company_ or meta["company"]
-                location = location or meta["location"] or None
-            except llm.LLMError as e:
-                console.print(f"[yellow]{e}[/yellow]")
         title = title or click.prompt("Job title", default=job.get("title") or "")
         company_ = company_ or click.prompt("Company")
         job = manual.from_text(job["description"], title=title, company=company_,
@@ -159,35 +146,6 @@ def companies_add(urls: tuple[str, ...]) -> None:
         n = company.probe(source, slug) if source != "workday" else None
         console.print(f"[green]  + {source}:{slug}[/green]" + (f" ({n} open jobs)" if n is not None else ""))
     save_config(cfg)
-
-
-@companies.command(name="suggest")
-@click.option("--like", required=True, help="Comma-separated companies you like.")
-@click.option("--add", "add_all", is_flag=True, help="Add every verified suggestion to config.")
-def companies_suggest(like: str, add_all: bool) -> None:
-    """Suggest similar companies and verify each has a live job board."""
-    cfg = load_config()
-    search = cfg.get("search") or {}
-    try:
-        found = company.suggest(cfg, [x.strip() for x in like.split(",")], search.get("roles") or [],
-                                (cfg.get("filters") or {}).get("include_locations") or [])
-    except llm.LLMError as e:
-        console.print(f"[red]{e}[/red]")
-        sys.exit(1)
-    table = Table(title="Suggested companies (verified boards)")
-    for col in ("Company", "Board", "Open jobs", "Why"):
-        table.add_column(col)
-    for c in found:
-        table.add_row(c["name"], f"{c['source']}:{c['slug']}", str(c["open_jobs"]), c["why"])
-    console.print(table)
-    if add_all and found:
-        sources = cfg.setdefault("sources", {})
-        for c in found:
-            lst = sources.get(c["source"]) or []
-            if c["slug"] not in lst:
-                sources[c["source"]] = lst + [c["slug"]]
-        save_config(cfg)
-        console.print(f"[green]Added {len(found)} companies to config.yaml[/green]")
 
 
 @companies.command(name="list")

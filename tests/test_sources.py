@@ -1,6 +1,6 @@
 import httpx
 
-from jobsearch.sources import base, manual, smartrecruiters, workable, workday
+from jobsearch.sources import ashby, base, manual, smartrecruiters, workable, workday
 
 
 def test_html_to_text_keeps_structure():
@@ -76,3 +76,14 @@ def test_from_text_builds_stable_id():
     a = manual.from_text("desc", title="Analyst", company="Acme Health")
     b = manual.from_text("desc", title="Analyst", company="Acme Health")
     assert a["id"] == b["id"] and a["id"].startswith("manual:acme-health:")
+
+
+def test_ashby_structured_salary():
+    comp = {"summaryComponents": [
+        {"compensationType": "EquityPercentage", "minValue": None},
+        {"compensationType": "Salary", "interval": "1 YEAR", "minValue": 211400, "maxValue": 290600}]}
+    assert ashby._salary(comp) == {"salary_min": 211400, "salary_max": 290600}
+    hourly = {"summaryComponents": [{"compensationType": "Salary", "interval": "1 HOUR",
+                                     "minValue": 25, "maxValue": 30}]}
+    assert ashby._salary(hourly) == {"salary_min": 52000, "salary_max": 62400}
+    assert ashby._salary({}) == {}

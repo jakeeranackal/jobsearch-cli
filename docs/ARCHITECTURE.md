@@ -47,10 +47,17 @@ jobs row ──► jd.parse()            sections: required / preferred / respon
          keywords.analyze_job()    lexicon terms weighted by section + title,
                │                   compared to resume bullets vs skills list
                ▼                   ──► GOOD / BURIED / STRENGTHEN / WORDING / MISSING
-         tailor.tailor()           Claude rewrite (facts from master resume only)
-               │                   or reorder bullets/skills by job weight
-               ▼                   ──► fabrication_check() on the result
-         pipeline.build_bundle()   resume .docx/.md, cover letter, answers, company brief
+         tailor.tailor()           reorder bullets/skills by job weight, list edits
+               │
+               ▼
+         pipeline.build_bundle()   resume .docx/.md, cover letter, answers, company brief,
+               │                   CLAUDE_BRIEF.md (rules + edits for the rewrite)
+               ▼
+         you / Claude Code edit    the wording, in conversation, from real facts only
+               │
+               ▼
+         tailor.check()            re-score + flag skills/numbers not in the original
+         export                    rebuild the .docx from the edited .md
                │
                ▼
          applications/<job>/  +  applications row (status, resume_path, bundle_dir)
@@ -73,7 +80,7 @@ automation.run_daily() runs all of the above, then notify.send(digest)
 - **httpx, not requests**: same ergonomics, async-ready if v0.2 needs concurrent fetches.
 - **Lexicon, not free-text NLP, for keywords**: `data/skills.txt` maps aliases ("PowerBI", "power bi desktop") to one skill so counts are honest and the output is explainable. Repeated phrases outside the lexicon are still surfaced. Users extend it via `keywords.extra` in config.
 - **Section-aware weighting**: a skill in Requirements or the title outweighs one in Nice-to-have, and benefits/EEO text is ignored. Headings are recognized by phrase; checked against live Greenhouse, Lever and Ashby postings (~95% get a Requirements section).
-- **AI is optional and guarded**: every Claude feature has a template/reorder fallback. Tailoring sends the master resume as the only source of facts and then diffs skills and numbers against it.
+- **No AI service, no API key**: the tool does the mechanical parts (finding, scoring, analysis, tracking, drafts with [ADD] markers). The writing is done by the person, usually with Claude Code in conversation, guided by `CLAUDE_BRIEF.md`. `check` then verifies nothing was invented.
 - **Email only moves status forward**: an "application received" after an interview invite never downgrades the row.
 - **Drafts go to disk as Markdown**: the user *will* edit them. Markdown is the path of least resistance and pastes cleanly into email, Google Docs, or an ATS textarea.
 

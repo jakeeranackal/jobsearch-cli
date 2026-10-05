@@ -3,47 +3,29 @@ from datetime import datetime, timedelta
 import yaml
 from click.testing import CliRunner
 
-from jobsearch import answers, automation, db, interview, keywords, letters, llm, notify, pipeline
+from jobsearch import answers, automation, db, interview, keywords, letters, notify, pipeline
 from jobsearch.bot import Bot
 from jobsearch.cli import cli
 
 
-def _fake_llm(monkeypatch, text="Subject: Hello\n\nBody text", data=None):
-    calls = []
-    monkeypatch.setattr(llm, "available", lambda cfg=None: True)
-    monkeypatch.setattr(llm, "ask_text", lambda cfg, s, p, **k: calls.append(p) or text)
-    monkeypatch.setattr(llm, "ask_json", lambda cfg, s, p, schema, **k: calls.append(p) or data)
-    return calls
-
-
-def test_template_drafts_without_ai(job, resume_text):
+def test_template_drafts(job, resume_text):
     a = keywords.analyze_job(job, resume_text)
     user = {"name": "Jordan Lee", "email": "j@x.com"}
-    letter = letters.cover_letter({}, user, job, resume_text, a)
+    letter = letters.cover_letter(user, job, resume_text, a)
     assert "Acme Health" in letter and "Jordan Lee" in letter
-    subj, body = letters.followup_email({}, user, job, "applied", "Sam Park")
+    subj, body = letters.followup_email(user, job, "Sam Park")
     assert "Hi Sam" in body and "Data Analyst" in subj
-    subj, body = letters.thank_you_email({}, user, job, "Sam Park", "the Snowflake migration")
+    subj, body = letters.thank_you_email(user, job, "Sam Park", "the Snowflake migration")
     assert "Snowflake migration" in body
-    msgs = letters.outreach({}, user, job, a, resume_text, "Priya S")
+    msgs = letters.outreach(user, job, a, "Priya S")
     assert len(msgs["linkedin"]) <= 300 and "Hi Priya" in msgs["email_body"]
-
-
-def test_ai_drafts_parse_subject(monkeypatch, job, resume_text):
-    calls = _fake_llm(monkeypatch)
-    a = keywords.analyze_job(job, resume_text)
-    subj, body = letters.followup_email({}, {"name": "J"}, job, "applied")
-    assert (subj, body) == ("Hello", "Body text")
-    letter = letters.cover_letter({}, {"name": "J", "email": "j@x.com"}, job, resume_text, a)
-    assert letter.startswith("J\nj@x.com") and "Body text" in letter
-    assert "RESUME" in calls[-1]
 
 
 def test_answers_render_fills_placeholders(job, resume_text):
     a = keywords.analyze_job(job, resume_text)
     bank = {"salary_expectation": "Targeting {salary_range}.", "why_this_role": "auto",
             "custom": "ignored", "links": {"linkedin": "https://li/j"}}
-    text = answers.render(bank, job, {}, resume_text, a)
+    text = answers.render(bank, job, {}, a)
     assert "$75,000-$95,000" in text
     assert "The Data Analyst role centers on" in text
     assert "https://li/j" in text
@@ -53,10 +35,10 @@ def test_prep_sheet_and_salary(job, resume_text):
     a = keywords.analyze_job(job, resume_text)
     stories = [{"title": "Dashboards for ops", "tags": ["tableau", "dashboards"], "result": "x"},
                {"title": "Unrelated", "tags": ["cooking"]}]
-    sheet = interview.prep_sheet({}, job, resume_text, a, stories)
+    sheet = interview.prep_sheet(job, resume_text, a, stories)
     assert "Dashboards for ops" in sheet and "Unrelated" not in sheet
     assert "Walk me through how you've used" in sheet
-    assert "$75,000 to $95,000" in interview.salary_help({}, job, a)
+    assert "$75,000 to $95,000" in interview.salary_help(job, a)
 
 
 def test_bot_commands(project, job, monkeypatch):

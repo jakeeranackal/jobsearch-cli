@@ -167,7 +167,9 @@ def upsert_job(conn: sqlite3.Connection, job: dict) -> bool:
     row = conn.execute("SELECT id FROM jobs WHERE id = ?", (job["id"],)).fetchone()
     if row:
         conn.execute(
-            "UPDATE jobs SET is_open = 1 WHERE id = ?", (job["id"],)
+            "UPDATE jobs SET is_open = 1, salary_min = COALESCE(salary_min, ?), "
+            "salary_max = COALESCE(salary_max, ?) WHERE id = ?",
+            (job.get("salary_min"), job.get("salary_max"), job["id"]),
         )
         return False
     conn.execute(

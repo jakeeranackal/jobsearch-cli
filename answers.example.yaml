@@ -1,7 +1,7 @@
 # Answers to the questions every application form asks.
 # Copy to answers.yaml (gitignored) and fill in. {company} and {title} are
-# filled per job. Set a value to "auto" to have Claude draft it from your
-# resume and the posting (needs an API key; otherwise you get a template).
+# filled per job. "auto" gives a starting point with [ADD] markers that you
+# (or Claude Code) finish per job.
 
 work_authorization: "Yes, I am authorized to work in the United States."
 require_sponsorship: "No"

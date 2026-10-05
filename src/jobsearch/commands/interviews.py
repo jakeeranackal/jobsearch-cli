@@ -1,4 +1,4 @@
-"""Interviews: schedule (with calendar), prep sheets, mock interviews, salary."""
+"""Interviews: schedule (with calendar), prep sheets, salary."""
 from __future__ import annotations
 
 import sys
@@ -7,7 +7,7 @@ from datetime import datetime
 import click
 from rich.table import Table
 
-from .. import db, google_api, interview, keywords, llm, pipeline
+from .. import db, google_api, interview, keywords, pipeline
 from ..config import application_dir, company_name, console, load_config
 
 
@@ -82,47 +82,6 @@ def prep(job_id: str) -> None:
 
 @click.command()
 @click.argument("job_id")
-@click.option("--questions", "n", default=5, type=int)
-def mock(job_id: str, n: int) -> None:
-    """Practice interview: Claude asks, you answer, you get graded feedback."""
-    cfg = load_config()
-    if not llm.available(cfg):
-        console.print("[red]Mock interviews need a Claude API key (ANTHROPIC_API_KEY).[/red]")
-        sys.exit(1)
-    with db.connect() as conn:
-        job, best, _ = pipeline.job_and_track(conn, job_id)
-    _, resume_text = pipeline.resume_for(cfg, best)
-    asked: list[str] = []
-    log = [f"# Mock interview: {job['title']} at {company_name(job)}", ""]
-    console.print("[dim]Answer out loud first, then type it. Enter a blank line to finish an answer; 'q' to stop.[/dim]")
-    for i in range(n):
-        q = interview.mock_question(cfg, job, resume_text, asked)
-        asked.append(q)
-        console.print(f"\n[bold cyan]Q{i + 1}.[/bold cyan] {q}")
-        lines = []
-        while True:
-            line = input("> ")
-            if line.strip().lower() == "q":
-                n = 0
-                break
-            if not line.strip():
-                break
-            lines.append(line)
-        if not lines:
-            break
-        answer = " ".join(lines)
-        fb = interview.mock_feedback(cfg, job, q, answer)
-        console.print(f"\n{fb}")
-        log += [f"## Q{i + 1}. {q}", "", f"**Your answer:** {answer}", "", fb, ""]
-        if n == 0:
-            break
-    path = application_dir(job_id) / f"mock_{datetime.now():%Y%m%d_%H%M}.md"
-    path.write_text("\n".join(log), encoding="utf-8")
-    console.print(f"\n[green]Session saved[/green] {path}")
-
-
-@click.command()
-@click.argument("job_id")
 def salary(job_id: str) -> None:
     """Salary range, what to ask for, and negotiation scripts."""
     cfg = load_config()
@@ -130,10 +89,10 @@ def salary(job_id: str) -> None:
         job, best, _ = pipeline.job_and_track(conn, job_id)
     _, resume_text = pipeline.resume_for(cfg, best)
     a = keywords.analyze_job(job, resume_text, pipeline.extra_terms(cfg))
-    text = interview.salary_help(cfg, job, a, (cfg.get("user") or {}).get("location") or "")
+    text = interview.salary_help(job, a)
     path = application_dir(job_id) / "salary.md"
     path.write_text(text, encoding="utf-8")
     console.print(text)
 
 
-COMMANDS = [interview_group, prep, mock, salary]
+COMMANDS = [interview_group, prep, salary]

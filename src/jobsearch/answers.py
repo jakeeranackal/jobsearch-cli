@@ -1,7 +1,7 @@
 """Application-form answer bank, filled in per job."""
 from __future__ import annotations
 
-from . import keywords, llm
+from . import keywords, letters
 from .config import company_name
 
 _LABELS = {
@@ -17,12 +17,13 @@ _LABELS = {
     "greatest_strength": "What's your greatest strength?",
 }
 
-_FALLBACK = {
+# Starting points for "auto" answers; [ADD] marks what only you can write.
+_AUTO = {
     "why_this_company": "[ADD: one specific thing about {company} (product, mission, recent news) "
                         "and why it matters to you]",
     "why_this_role": "The {title} role centers on {top_terms}, which is the work I've been doing "
                      "and want to go deeper on. [ADD: one concrete example]",
-    "greatest_strength": "[ADD: a strength the posting values, with a one-line example]",
+    "greatest_strength": "[ADD: a strength the posting values ({top_terms}), with a one-line example]",
 }
 
 
@@ -41,38 +42,26 @@ def _salary_range(job: dict, cfg: dict, posted: tuple[int, int] | None = None) -
     return f"${floor:,}+" if floor else "[ADD: your range]"
 
 
-def answer_question(cfg: dict, question: str, job: dict, resume_text: str,
-                    max_words: int = 150) -> str:
-    """Draft an answer to any application question from the resume and posting."""
-    if not llm.available(cfg):
-        return f"[ADD: answer to '{question}' using a real example from your resume]"
-    system = ("You draft answers to job application questions. Use only facts from the resume. "
-              "Plain, specific, first person, no clichés. If a needed fact is missing, write "
-              "[ADD: ...] instead of inventing it.")
-    prompt = (f"Question: {question}\nJob: {job.get('title')} at {company_name(job)}\n\n"
-              f"POSTING:\n{(job.get('description') or '')[:6000]}\n\nRESUME:\n{resume_text}\n\n"
-              f"Answer in at most {max_words} words.")
-    return llm.ask_text(cfg, system, prompt, effort="low")
+def question_stub(question: str, resume_text: str, analysis: keywords.JobAnalysis) -> str:
+    """Placeholder for an unusual form question, with the resume bullets most likely to answer it."""
+    options = "\n".join(f"  - {b}" for b in letters.top_bullets(resume_text, analysis, 3))
+    return f"[ADD: answer to '{question}'. Strongest material from your resume:\n{options}]"
 
 
-def render(bank: dict, job: dict, cfg: dict, resume_text: str,
-           analysis: keywords.JobAnalysis) -> str:
-    fill = {
+def render(bank: dict, job: dict, cfg: dict, analysis: keywords.JobAnalysis) -> str:
+    fill = _Keep({
         "company": company_name(job),
         "title": job.get("title", ""),
         "salary_range": _salary_range(job, cfg, analysis.salary),
         "top_terms": ", ".join(t.term for t in analysis.top_requirements[:3]) or "this area",
-    }
+    })
     lines = [f"# Application answers: {fill['title']} at {fill['company']}", ""]
     for key, label in _LABELS.items():
         value = bank.get(key)
         if value is None:
             continue
-        if value == "auto" and llm.available(cfg):
-            value = answer_question(cfg, label, job, resume_text)
-        else:
-            value = (_FALLBACK[key] if value == "auto" else str(value)).format_map(_Keep(fill))
-        lines += [f"**{label}**", value, ""]
+        template = _AUTO.get(key, "[ADD]") if value == "auto" else str(value)
+        lines += [f"**{label}**", template.format_map(fill), ""]
     links = {k: v for k, v in (bank.get("links") or {}).items() if v}
     if links:
         lines += ["**Links**"] + [f"- {k}: {v}" for k, v in links.items()] + [""]

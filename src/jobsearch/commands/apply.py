@@ -3,11 +3,12 @@ from __future__ import annotations
 
 import sys
 import webbrowser
+from pathlib import Path
 
 import click
 from rich.table import Table
 
-from .. import answers, db, keywords, letters, llm, network, pipeline, resume_io, tailor
+from .. import answers, db, keywords, letters, network, pipeline, resume_io, tailor
 from ..config import ANSWERS_PATH, application_dir, company_name, console, load_config, load_yaml
 
 STATUS_STYLE = {"GOOD": "green", "WORDING": "cyan", "STRENGTHEN": "yellow", "BURIED": "yellow",
@@ -73,21 +74,14 @@ def analyze(job_id: str, track: str | None, save: bool) -> None:
 @click.command(name="tailor")
 @click.argument("job_id")
 @click.option("--track", default=None)
-@click.option("--no-ai", is_flag=True, help="Reorder only; don't call Claude.")
-def tailor_cmd(job_id: str, track: str | None, no_ai: bool) -> None:
-    """Rewrite your resume for one job (docx + md in applications/<job>/)."""
+def tailor_cmd(job_id: str, track: str | None) -> None:
+    """Draft resume for one job: bullets and skills reordered, plus the edits to make."""
     cfg = load_config()
     with db.connect() as conn:
         job, best, _ = _job_or_exit(conn, job_id)
     _, resume_text = pipeline.resume_for(cfg, track or best)
-    if not no_ai and not llm.available(cfg):
-        console.print("[yellow]No Claude API key, so reordering only. Set ANTHROPIC_API_KEY for full rewrites.[/yellow]")
-    try:
-        r = tailor.tailor(job, resume_text, cfg, extra_terms=pipeline.extra_terms(cfg), use_ai=not no_ai,
-                          max_bullets=int((cfg.get("tailor") or {}).get("max_bullets_per_role", 5)))
-    except llm.LLMError as e:
-        console.print(f"[red]{e}[/red] Falling back to reorder-only.")
-        r = tailor.tailor(job, resume_text, cfg, extra_terms=pipeline.extra_terms(cfg), use_ai=False)
+    r = tailor.tailor(job, resume_text, extra_terms=pipeline.extra_terms(cfg),
+                      max_bullets=int((cfg.get("tailor") or {}).get("max_bullets_per_role", 5)))
     out = application_dir(job_id)
     stem = pipeline._resume_stem(cfg, job)
     resume_io.write_markdown(r.resume, out / f"{stem}.md")
@@ -97,26 +91,87 @@ def tailor_cmd(job_id: str, track: str | None, no_ai: bool) -> None:
         app = db.get_application(conn, job_id)
         db.update_application(conn, job_id, (app or {}).get("status") or "drafted",
                               followup_days=cfg.get("followup_days") or {}, resume_path=str(docx_path))
-    console.print(f"[green]Tailored resume:[/green] {docx_path}")
-    console.print(f"  Coverage of required terms: {r.coverage_before:.0%} to [bold]{r.coverage_after:.0%}[/bold]")
-    for w in r.warnings:
-        console.print(f"  [red]CHECK:[/red] {w}")
+    console.print(f"[green]Draft resume:[/green] {out / (stem + '.md')}  (and .docx)")
     for t in r.todo[:12]:
         console.print(f"  [yellow]TODO:[/yellow] {t}")
+    console.print(f"Edit the .md (or ask Claude Code to), then run `jobsearch check {job_id}`.")
+
+
+def _bundle_resume(cfg: dict, job: dict, job_id: str, file: str | None) -> Path:
+    path = Path(file) if file else application_dir(job_id) / f"{pipeline._resume_stem(cfg, job)}.md"
+    if not path.exists():
+        console.print(f"[red]{path} not found. Run `jobsearch tailor {job_id}` first or pass a file.[/red]")
+        sys.exit(1)
+    return path
+
+
+@click.command()
+@click.argument("job_id")
+@click.argument("file", required=False)
+def check(job_id: str, file: str | None) -> None:
+    """After editing a resume: re-score it and flag anything not in your original resume."""
+    cfg = load_config()
+    with db.connect() as conn:
+        job, best, _ = _job_or_exit(conn, job_id)
+    _, master = pipeline.resume_for(cfg, best)
+    path = _bundle_resume(cfg, job, job_id, file)
+    r = tailor.check(job, master, resume_io.read_text(path), pipeline.extra_terms(cfg))
+    console.print(f"[bold]{path.name}[/bold]: coverage of required terms "
+                  f"{r.coverage_before:.0%} (original) to [bold]{r.coverage_after:.0%}[/bold]")
+    if r.warnings:
+        console.print("[red]Not in your original resume. Remove these unless they're true:[/red]")
+        for w in r.warnings:
+            console.print(f"  [red]-[/red] {w}")
+    else:
+        console.print("[green]Nothing invented: every skill and number traces back to your resume.[/green]")
+    for note in r.changes:
+        console.print(f"  [cyan]reworded:[/cyan] {note}")
+    for t in r.todo[:10]:
+        console.print(f"  [yellow]still open:[/yellow] {t}")
+
+
+@click.command()
+@click.argument("job_id")
+@click.argument("file", required=False)
+def export(job_id: str, file: str | None) -> None:
+    """Rebuild the ATS-safe .docx from the edited resume .md."""
+    cfg = load_config()
+    with db.connect() as conn:
+        job, _, _ = _job_or_exit(conn, job_id)
+    path = _bundle_resume(cfg, job, job_id, file)
+    resume = resume_io.parse(_md_to_text(path.read_text(encoding="utf-8")))
+    out = resume_io.write_docx(resume, path.with_suffix(".docx"))
+    with db.connect() as conn:
+        conn.execute("UPDATE applications SET resume_path = ? WHERE job_id = ?", (str(out), job_id))
+    console.print(f"[green]Wrote[/green] {out}")
+
+
+def _md_to_text(md: str) -> str:
+    """Our resume markdown back to the plain layout resume_io.parse expects."""
+    lines = []
+    for ln in md.splitlines():
+        s = ln.strip()
+        if s.startswith("## "):
+            lines += ["", s[3:].upper()]
+        elif s.startswith("# "):
+            lines.append(s[2:])
+        elif s.startswith("**") and s.endswith("**"):
+            lines.append(s.strip("*"))
+        else:
+            lines.append(ln)
+    return "\n".join(lines)
 
 
 @click.command()
 @click.argument("job_id")
 def letter(job_id: str) -> None:
-    """Cover letter for one job (Claude if available, else a strong template)."""
+    """Cover letter draft for one job, with [CUSTOMIZE] markers to fill in."""
     cfg = load_config()
     with db.connect() as conn:
         job, best, score = _job_or_exit(conn, job_id)
     track, resume_text = pipeline.resume_for(cfg, best)
     a = keywords.analyze_job(job, resume_text, pipeline.extra_terms(cfg))
-    brief_path = application_dir(job_id) / "company.md"
-    brief = brief_path.read_text(encoding="utf-8") if brief_path.exists() else None
-    body = letters.cover_letter(cfg, cfg.get("user") or {}, job, resume_text, a, brief, track, score)
+    body = letters.cover_letter(cfg.get("user") or {}, job, resume_text, a, track, score)
     path = application_dir(job_id) / "cover_letter.md"
     path.write_text(body, encoding="utf-8")
     console.print(f"[green]Cover letter:[/green] {path}")
@@ -124,9 +179,9 @@ def letter(job_id: str) -> None:
 
 @click.command(name="answers")
 @click.argument("job_id")
-@click.option("--question", "-q", multiple=True, help="Extra form question(s) to draft answers for.")
+@click.option("--question", "-q", multiple=True, help="Extra form question(s) to add.")
 def answers_cmd(job_id: str, question: tuple[str, ...]) -> None:
-    """Fill your answer bank for one job, plus any unusual form questions."""
+    """Fill your answer bank for one job, plus stubs for unusual form questions."""
     cfg = load_config()
     bank = load_yaml(ANSWERS_PATH)
     if not bank:
@@ -135,9 +190,9 @@ def answers_cmd(job_id: str, question: tuple[str, ...]) -> None:
         job, best, _ = _job_or_exit(conn, job_id)
     _, resume_text = pipeline.resume_for(cfg, best)
     a = keywords.analyze_job(job, resume_text, pipeline.extra_terms(cfg))
-    text = answers.render(bank, job, cfg, resume_text, a) if bank else ""
+    text = answers.render(bank, job, cfg, a) if bank else ""
     for q in question:
-        text += f"\n**{q}**\n{answers.answer_question(cfg, q, job, resume_text)}\n"
+        text += f"\n**{q}**\n{answers.question_stub(q, resume_text, a)}\n"
     path = application_dir(job_id) / "answers.md"
     path.write_text(text, encoding="utf-8")
     console.print(text)
@@ -146,26 +201,20 @@ def answers_cmd(job_id: str, question: tuple[str, ...]) -> None:
 
 @click.command(name="apply")
 @click.argument("job_id")
-@click.option("--no-ai", is_flag=True, help="Skip Claude; templates and reordering only.")
 @click.option("--no-open", is_flag=True, help="Don't open the folder and posting.")
 @click.option("--applied", "mark_applied", is_flag=True, help="Mark as applied without asking.")
-def apply_cmd(job_id: str, no_ai: bool, no_open: bool, mark_applied: bool) -> None:
-    """Build the full kit (resume, cover letter, answers, brief), open the posting, log it."""
+def apply_cmd(job_id: str, no_open: bool, mark_applied: bool) -> None:
+    """Build the application folder, open the posting, and log it once you've sent it."""
     cfg = load_config()
     console.print(f"[bold]Building application kit for {job_id}[/bold]")
     try:
-        out = pipeline.build_bundle(cfg, job_id, use_ai=not no_ai, log=console.print)
+        out = pipeline.build_bundle(cfg, job_id, log=console.print)
     except KeyError as e:
         console.print(f"[red]{e.args[0]}[/red]")
         sys.exit(1)
-    except llm.LLMError as e:
-        console.print(f"[red]{e}[/red] Retrying without AI.")
-        out = pipeline.build_bundle(cfg, job_id, use_ai=False, log=console.print)
-    r = out["result"]
-    for w in r.warnings:
-        console.print(f"  [red]CHECK:[/red] {w}")
     console.print(f"\n[green]Kit ready:[/green] {out['dir']}")
-    console.print("Review the resume and letter, then submit on the company's site. You hit send.")
+    console.print("Next: finish the wording (CLAUDE_BRIEF.md has the steps), run "
+                  f"`jobsearch check {job_id}`, then submit on the company's site yourself.")
     if not no_open:
         webbrowser.open(out["dir"].resolve().as_uri())
         if out["job"].get("url"):
@@ -201,7 +250,7 @@ def outreach(job_id: str, contact_name: str | None) -> None:
     console.print("\n[bold]Find the right people:[/bold]")
     for label, url in network.people_search_links(comp, job["title"]).items():
         console.print(f"  {label}: {url}")
-    msgs = letters.outreach(cfg, cfg.get("user") or {}, job, a, resume_text, contact_name, referral=bool(refs))
+    msgs = letters.outreach(cfg.get("user") or {}, job, a, contact_name)
     text = (f"# Outreach: {job['title']} at {comp}\n\n## LinkedIn note\n{msgs['linkedin']}\n\n"
             f"## Email\nSubject: {msgs['email_subject']}\n\n{msgs['email_body']}\n")
     path = application_dir(job_id) / "outreach.md"
@@ -222,4 +271,4 @@ def ats(resume_file: str, show_text: bool) -> None:
         console.print(resume_io.read_text(resume_file))
 
 
-COMMANDS = [analyze, tailor_cmd, letter, answers_cmd, apply_cmd, outreach, ats]
+COMMANDS = [analyze, tailor_cmd, check, export, letter, answers_cmd, apply_cmd, outreach, ats]

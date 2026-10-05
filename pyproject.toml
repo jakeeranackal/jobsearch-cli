@@ -28,9 +28,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-ai = ["anthropic>=1.0"]
 google = ["google-api-python-client>=2.100", "google-auth-oauthlib>=1.2", "google-auth-httplib2>=0.2"]
-all = ["jobsearch-cli[ai,google]"]
+all = ["jobsearch-cli[google]"]
 dev = ["pytest>=7.4", "pytest-cov>=4.1"]
 
 [project.scripts]

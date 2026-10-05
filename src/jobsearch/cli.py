@@ -1,6 +1,6 @@
 """click-based CLI for jobsearch.
 
-Core:       setup, init, discover, match, list, add, track, followup
+Core:       setup, init, discover, match, list, add, track, applications, followup
 Per job:    analyze, tailor, check, export, letter, answers, apply, outreach, ats
 Market:     keywords, companies
 Email:      email connect/sync, followup --draft, thanks
@@ -220,6 +220,32 @@ def track(job_id: str, status: str, notes: str | None, contact_email: str | None
             conn.execute("UPDATE applications SET contact_email = ? WHERE job_id = ?",
                          (contact_email, job_id))
     console.print(f"[green]{job_id} -> {status}[/green]")
+
+
+@cli.command(name="applications")
+@click.option("--status", default=None,
+              type=click.Choice(["drafted", "applied", "interviewing", "rejected", "offer", "withdrawn"]))
+def applications_cmd(status: str | None) -> None:
+    """Every application you're tracking, with status and next follow-up."""
+    with db.connect() as conn:
+        sql = """SELECT a.*, j.title, j.source_company, j.company_name, j.url
+                 FROM applications a JOIN jobs j ON j.id = a.job_id"""
+        params: list = []
+        if status:
+            sql += " WHERE a.status = ?"
+            params.append(status)
+        sql += " ORDER BY COALESCE(a.next_followup_at, '9999'), a.last_update_at DESC"
+        rows = [dict(r) for r in conn.execute(sql, params)]
+    if not rows:
+        console.print("[yellow]No applications tracked yet.[/yellow]")
+        return
+    table = Table(title=f"Applications ({len(rows)})")
+    for col in ("Status", "Title", "Company", "Applied", "Next follow-up", "Notes", "ID"):
+        table.add_column(col, style="dim" if col == "ID" else None)
+    for r in rows:
+        table.add_row(r["status"], r["title"], company_name(r), (r["applied_at"] or "")[:10],
+                      (r["next_followup_at"] or "")[:10], r["notes"] or "", r["job_id"])
+    console.print(table)
 
 
 def due_followups(conn) -> list[dict]:

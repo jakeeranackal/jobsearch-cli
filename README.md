@@ -105,6 +105,7 @@ jobsearch ats resumes/my_resume.docx
 
 # after applying
 jobsearch track <id> --status applied --contact-email recruiter@co.com
+jobsearch applications                  # everything you're tracking
 jobsearch followup --draft              # Gmail drafts for everything due
 jobsearch email sync                    # statuses from recruiter replies
 jobsearch interview add <id> --when "2026-10-14 14:00" --with "Sam Park"

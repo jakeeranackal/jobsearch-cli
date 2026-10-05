@@ -53,7 +53,7 @@ def referrals(min_score: float) -> None:
                 table.add_row(f"{j['score']:.2f}", j["title"], comp, names, j["id"])
     if hits:
         console.print(table)
-        console.print("Next: `jobsearch outreach <id>` drafts a referral ask.")
+        console.print("Next: `jobsearch contacts <id>` for links, then ask Claude to write the referral ask.")
     else:
         console.print("No matches between your connections and current top jobs.")
 

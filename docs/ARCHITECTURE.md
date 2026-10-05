@@ -31,11 +31,7 @@
                           │   scores table    │
                           └───────────────────┘
                                     ▼
-                          jobsearch list / draft
-                                    ▼
-                          drafter.render()
-                                    ▼
-                       drafts/{job_id}.md  +  applications row
+                          jobsearch list
 ```
 
 ### v0.2: from a matched job to an application

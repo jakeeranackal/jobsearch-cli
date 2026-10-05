@@ -32,8 +32,6 @@ jobsearch.db-journal
 resumes/*.txt
 resumes/*.pdf
 resumes/*.docx
-drafts/*.md
-drafts/*.txt
 answers.yaml
 stories.yaml
 applications/
@@ -45,7 +43,6 @@ run_daily.sh
 run_alerts.sh
 *.html.out
 !resumes/.gitkeep
-!drafts/.gitkeep
 
 # Editors
 .vscode/

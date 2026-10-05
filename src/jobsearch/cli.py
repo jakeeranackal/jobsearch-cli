@@ -22,8 +22,8 @@ from pathlib import Path
 import click
 from rich.table import Table
 
-from . import db, drafter, pipeline, quality, resume_io
-from .config import CONFIG_PATH, DRAFTS_DIR, EXAMPLE_CONFIG, company_name, console, load_config
+from . import db, pipeline, quality
+from .config import CONFIG_PATH, EXAMPLE_CONFIG, company_name, console, load_config
 from .pipeline import passes_filters  # noqa: F401  (kept for backward compatibility)
 
 
@@ -52,9 +52,7 @@ def init() -> None:
     console.print(f"[green]Initialized {db.DEFAULT_DB}[/green]")
 
     Path("resumes").mkdir(exist_ok=True)
-    Path("drafts").mkdir(exist_ok=True)
     Path("resumes/.gitkeep").touch()
-    Path("drafts/.gitkeep").touch()
 
 
 @cli.command()
@@ -145,54 +143,6 @@ def list_cmd(min_score: float, limit: int, track: str | None, fresh_days: int | 
             f"{r['age']}d" if r["age"] is not None else "", salary, r.get("flags") or "", r["id"],
         )
     console.print(table)
-
-
-@cli.command()
-@click.argument("job_id")
-def draft(job_id: str) -> None:
-    """Template cover letter for JOB_ID, written to ./drafts/. See also `letter` and `apply`."""
-    cfg = load_config()
-    user = cfg.get("user") or {}
-    tracks_cfg = cfg.get("resume_tracks") or {}
-
-    with db.connect() as conn:
-        job = db.get_job(conn, job_id)
-        if not job:
-            console.print(f"[red]No job with id {job_id}.[/red]")
-            sys.exit(1)
-        best = db.best_track(conn, job_id)
-        if not best:
-            console.print(f"[red]No score for {job_id}. Run `jobsearch match` first.[/red]")
-            sys.exit(1)
-        track_name, score = best
-
-    track_cfg = tracks_cfg[track_name]
-    resume_text = resume_io.read_text(track_cfg["path"])
-    keywords = [k.lower() for k in (track_cfg.get("keywords") or [])]
-    desc_l = (job["title"] + " " + job["description"]).lower()
-    matched = [k for k in keywords if k in desc_l]
-
-    body = drafter.render(
-        user=user,
-        job=job,
-        resume_track=track_name,
-        score=score,
-        matched_keywords=matched,
-        resume_highlights=drafter.extract_highlights(resume_text),
-    )
-    path = drafter.save(DRAFTS_DIR, job_id, body)
-
-    with db.connect() as conn:
-        db.update_application(
-            conn, job_id, "drafted",
-            followup_days=cfg.get("followup_days") or {},
-            resume_track=track_name,
-            cover_letter_path=str(path),
-        )
-
-    console.print(f"[green]Draft written:[/green] {path}")
-    console.print(f"[dim]Track: {track_name}  •  Score: {score:.3f}  •  Matched keywords: {', '.join(matched) or 'none'}[/dim]")
-    console.print("[yellow]Review and customize the marked paragraphs before sending.[/yellow]")
 
 
 @cli.command()

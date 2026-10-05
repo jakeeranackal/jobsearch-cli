@@ -10,7 +10,6 @@ from rich.console import Console
 
 CONFIG_PATH = Path("config.yaml")
 EXAMPLE_CONFIG = Path("config.example.yaml")
-DRAFTS_DIR = Path("drafts")
 RESUMES_DIR = Path("resumes")
 APPLICATIONS_DIR = Path("applications")
 SECRETS_DIR = Path(".secrets")

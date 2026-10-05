@@ -45,3 +45,37 @@ def test_ats_check_missing_email(tmp_path):
     path.write_text("Name\n\nEXPERIENCE\n- Did a thing\n", encoding="utf-8")
     findings = resume_io.ats_check(path)
     assert ("bad", "No email address found in the text.") in findings
+
+
+GUIDE_STYLE_MD = """# Jordan Lee
+jordan@example.com | 555-123-4567 | Philadelphia, PA
+
+## Summary
+Analyst who turns messy data into reports people use.
+
+## Experience
+
+### Data Analyst, Numoda Corp (2023 - Present)
+- Wrote **SQL** queries to build weekly reports
+- Automated a manual reconciliation in Python
+
+**Operations Coordinator, City Events (2021 - 2023)**
+* Coordinated 40+ events with vendors and clients
+
+## Skills
+SQL, Python, Excel, Tableau
+
+## Education
+B.S. Information Science, Temple University
+"""
+
+
+def test_markdown_resume_parses_like_plain_text(tmp_path):
+    path = tmp_path / "resume.md"
+    path.write_text(GUIDE_STYLE_MD, encoding="utf-8")
+    r = resume_io.load(path)
+    assert r.header[0] == "Jordan Lee"
+    assert [s.key for s in r.sections] == ["summary", "experience", "skills", "education"]
+    exp = r.section("experience")
+    assert [i.kind for i in exp.items] == ["heading", "bullet", "bullet", "heading", "bullet"]
+    assert exp.items[1].text == "Wrote SQL queries to build weekly reports"

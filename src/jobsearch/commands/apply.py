@@ -139,27 +139,12 @@ def export(job_id: str, file: str | None) -> None:
     with db.connect() as conn:
         job, _, _ = _job_or_exit(conn, job_id)
     path = _bundle_resume(cfg, job, job_id, file)
-    resume = resume_io.parse(_md_to_text(path.read_text(encoding="utf-8")))
+    resume = resume_io.load(path)
     out = resume_io.write_docx(resume, path.with_suffix(".docx"))
     with db.connect() as conn:
         conn.execute("UPDATE applications SET resume_path = ? WHERE job_id = ?", (str(out), job_id))
     console.print(f"[green]Wrote[/green] {out}")
 
-
-def _md_to_text(md: str) -> str:
-    """Our resume markdown back to the plain layout resume_io.parse expects."""
-    lines = []
-    for ln in md.splitlines():
-        s = ln.strip()
-        if s.startswith("## "):
-            lines += ["", s[3:].upper()]
-        elif s.startswith("# "):
-            lines.append(s[2:])
-        elif s.startswith("**") and s.endswith("**"):
-            lines.append(s.strip("*"))
-        else:
-            lines.append(ln)
-    return "\n".join(lines)
 
 
 @click.command()

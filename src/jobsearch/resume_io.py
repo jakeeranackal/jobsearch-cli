@@ -101,7 +101,30 @@ def read_text(path: str | Path) -> str:
 
         reader = PdfReader(str(p))
         return "\n".join((page.extract_text() or "") for page in reader.pages)
-    return p.read_text(encoding="utf-8", errors="replace")
+    text = p.read_text(encoding="utf-8", errors="replace")
+    return md_to_text(text) if suffix in (".md", ".markdown") else text
+
+
+def md_to_text(md: str) -> str:
+    """Markdown resume to the plain layout parse() expects.
+
+    '# Name' stays the header, '## Section' becomes a section title, '### Role'
+    and '**Role**' become role headings, and bullets pass through.
+    """
+    lines = []
+    for ln in md.splitlines():
+        s = ln.strip()
+        if s.startswith("## ") and not s.startswith("### "):
+            lines += ["", s[3:].strip().upper()]
+        elif s.startswith("#"):
+            lines.append(s.lstrip("#").strip())
+        elif s.startswith("**") and s.endswith("**") and len(s) > 4:
+            lines.append(s.strip("*").strip())
+        elif s.startswith(("- ", "* ", "+ ")):
+            lines.append(ln.replace("**", ""))
+        else:
+            lines.append(ln.replace("**", "").replace("__", ""))
+    return "\n".join(lines)
 
 
 def _is_section_title(line: str) -> bool:

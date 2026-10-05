@@ -50,10 +50,10 @@ jobs row ──► jd.parse()            sections: required / preferred / respon
          tailor.tailor()           reorder bullets/skills by job weight, list edits
                │
                ▼
-         pipeline.build_bundle()   resume .docx/.md, cover letter, answers, company brief,
-               │                   CLAUDE_BRIEF.md (rules + edits for the rewrite)
+         pipeline.prepare()        posting.md, analysis.md, reordered resume .md
+               │                   in applications/<company>-<role>/
                ▼
-         you / Claude Code edit    the wording, in conversation, from real facts only
+         you / Claude Code edit    the wording, cover letter, emails: in conversation, real facts only
                │
                ▼
          tailor.check()            re-score + flag skills/numbers not in the original
@@ -67,8 +67,8 @@ jobs row ──► jd.parse()            sections: required / preferred / respon
 
 ```
 Gmail ──► inbox.classify() ──► inbox.match_job() ──► db.update_application()  (forward only)
-interviews table ──► automation.draft_thank_yous()
-applications.next_followup_at ──► letters.followup_email() ──► Gmail draft
+interviews table + applications.next_followup_at ──► digest ("send a thank-you", "follow up")
+email draft <file> ──► Gmail Drafts (a file you or Claude wrote; never sent)
 status_history ──► stats.funnel() / stats.weekly()
 automation.run_daily() runs all of the above, then notify.send(digest)
 ```
@@ -80,7 +80,7 @@ automation.run_daily() runs all of the above, then notify.send(digest)
 - **httpx, not requests**: same ergonomics, async-ready if v0.2 needs concurrent fetches.
 - **Lexicon, not free-text NLP, for keywords**: `data/skills.txt` maps aliases ("PowerBI", "power bi desktop") to one skill so counts are honest and the output is explainable. Repeated phrases outside the lexicon are still surfaced. Users extend it via `keywords.extra` in config.
 - **Section-aware weighting**: a skill in Requirements or the title outweighs one in Nice-to-have, and benefits/EEO text is ignored. Headings are recognized by phrase; checked against live Greenhouse, Lever and Ashby postings (~95% get a Requirements section).
-- **No AI service, no API key**: the tool does the mechanical parts (finding, scoring, analysis, tracking, drafts with [ADD] markers). The writing is done by the person, usually with Claude Code in conversation, guided by `CLAUDE_BRIEF.md`. `check` then verifies nothing was invented.
+- **No AI service, no API key**: the tool does what code is good at (pulling hundreds of postings, counting, remembering, checking). The writing is done by the person, usually with Claude Code in conversation (`CLAUDE.md` tells it how). `check` then verifies nothing was invented.
 - **Email only moves status forward**: an "application received" after an interview invite never downgrades the row.
 - **Drafts go to disk as Markdown**: the user *will* edit them. Markdown is the path of least resistance and pastes cleanly into email, Google Docs, or an ATS textarea.
 
@@ -94,6 +94,6 @@ automation.run_daily() runs all of the above, then notify.send(digest)
 ## What's deliberately *not* here
 
 - **Auto-submitting applications.** This violates the ToS of every major job board and ATS, and recruiters can spot bot-submitted applications. The tool drafts; the human sends.
-- **Sending applications or messages on its own.** Follow-ups can auto-send only if you opt in (`email.auto_send_followups`); everything else is a draft.
+- **Sending applications or messages on its own.** `email draft` saves to Gmail Drafts; only the digest to yourself is ever sent.
 - **Scraping LinkedIn/Indeed.** Paste listings with `add --paste`; import your own connections from LinkedIn's data export.
 - **A hosted web app.** The dashboard is a local, stdlib-only page on 127.0.0.1 over the same DB.

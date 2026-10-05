@@ -123,7 +123,7 @@ def keywords_cmd(title_filter: str | None, min_score: float | None, files: tuple
 
 @click.group()
 def companies() -> None:
-    """Companies to watch: add by careers URL, or discover similar ones."""
+    """Companies to watch: add by careers URL, or list them."""
 
 
 @companies.command(name="add")

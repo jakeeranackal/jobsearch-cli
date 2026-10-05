@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from jobsearch import company, db
+from jobsearch import db
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -38,7 +38,6 @@ def project(tmp_path, monkeypatch, resume_text):
     """A throwaway project folder with config, resume and DB; cwd set to it."""
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(db, "DEFAULT_DB", tmp_path / "jobsearch.db")
-    monkeypatch.setattr(company, "wikipedia_summary", lambda name, timeout=10.0: None)
     (tmp_path / "resumes").mkdir()
     (tmp_path / "resumes" / "data.txt").write_text(resume_text, encoding="utf-8")
     (tmp_path / "config.yaml").write_text(

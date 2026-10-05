@@ -1,6 +1,7 @@
 """Shared paths, config loading, and the console every command prints to."""
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 
@@ -13,8 +14,6 @@ DRAFTS_DIR = Path("drafts")
 RESUMES_DIR = Path("resumes")
 APPLICATIONS_DIR = Path("applications")
 SECRETS_DIR = Path(".secrets")
-ANSWERS_PATH = Path("answers.yaml")
-STORIES_PATH = Path("stories.yaml")
 
 console = Console()
 
@@ -52,8 +51,18 @@ def safe_name(job_id: str) -> str:
     return job_id.replace(":", "_").replace("/", "_").replace("\\", "_")
 
 
-def application_dir(job_id: str) -> Path:
-    d = APPLICATIONS_DIR / safe_name(job_id)
+def slug(text: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", (text or "").lower()).strip("-")[:60]
+
+
+def application_dir(job: dict, cfg: dict | None = None) -> Path:
+    """Folder for one application: <applications_dir>/<company>-<role>.
+
+    applications_dir defaults to ./applications; the beginner guide sets it to
+    ../applications so the tool and the Claude skills share one folder.
+    """
+    base = Path((cfg or {}).get("applications_dir") or APPLICATIONS_DIR)
+    d = base / f"{slug(company_name(job))}-{slug(job.get('title') or 'role')}"
     d.mkdir(parents=True, exist_ok=True)
     return d
 

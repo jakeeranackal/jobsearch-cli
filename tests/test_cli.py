@@ -16,7 +16,7 @@ def _run(*args, input=None):
     return result.output
 
 
-def test_add_analyze_apply_check_export_flow(project, jd_text):
+def test_add_analyze_prepare_check_export_flow(project, jd_text):
     (project / "listing.txt").write_text(jd_text, encoding="utf-8")
     out = _run("add", "--file", "listing.txt", "--title", "Data Analyst", "--company", "Acme Health")
     assert "Added" in out
@@ -27,17 +27,17 @@ def test_add_analyze_apply_check_export_flow(project, jd_text):
     out = _run("analyze", job_id)
     assert "BURIED" in out and "Tableau" in out
 
-    _run("apply", job_id, "--no-open", "--applied")
-    folder = next((project / "applications").iterdir())
+    _run("prepare", job_id)
+    folder = project / "applications" / "acme-health-data-analyst"
     names = {p.name for p in folder.iterdir()}
-    assert {"analysis.md", "cover_letter.md", "tailor_notes.md", "CLAUDE_BRIEF.md"} <= names
-    brief = (folder / "CLAUDE_BRIEF.md").read_text(encoding="utf-8")
-    assert "Never submit" in brief and f"jobsearch check {job_id}" in brief
+    assert {"posting.md", "analysis.md", "tailor_notes.md", "Jordan_Lee_Resume_Acme_Health.md"} <= names
+    assert "Advanced SQL and Tableau" in (folder / "posting.md").read_text(encoding="utf-8")
+    _run("track", job_id, "--status", "applied")
     with db.connect() as conn:
         app = db.get_application(conn, job_id)
-    assert app["status"] == "applied" and app["resume_path"]
+    assert app["status"] == "applied" and app["resume_path"].endswith(".md")
 
-    # Simulate Claude Code editing the resume, then check and export it
+    # Stand-in for the edit Claude Code makes in conversation
     md = next(folder.glob("*_Resume_*.md"))
     md.write_text(md.read_text(encoding="utf-8").replace(
         "Built Excel reports", "Built Tableau dashboards"), encoding="utf-8")
@@ -89,3 +89,10 @@ def test_no_ai_dependency_anywhere():
     for py in src.rglob("*.py"):
         text = py.read_text(encoding="utf-8")
         assert "anthropic" not in text.lower(), py
+
+
+def test_applications_dir_can_point_outside_the_tool(project, job):
+    from jobsearch import config
+
+    d = config.application_dir(job, {"applications_dir": str(project / "shared")})
+    assert d == project / "shared" / "acme-health-data-analyst" and d.exists()

@@ -14,7 +14,7 @@ from ..config import console, load_config
 @click.command()
 @click.option("--alerts", is_flag=True, help="Quick mode for hourly runs: only ping on strong new matches.")
 def daily(alerts: bool) -> None:
-    """Discover, score, sync email, draft follow-ups/thank-yous, send the digest."""
+    """Discover, score, sync email statuses, and send the digest."""
     text = automation.run_daily(load_config(), log=console.print, alerts_only=alerts)
     if text:
         console.print("\n" + text)
@@ -67,7 +67,7 @@ def dashboard(port: int, no_open: bool) -> None:
 
 @click.command()
 def bot() -> None:
-    """Telegram bot: /today, /apply <id>, /status, /stats from your phone.
+    """Telegram bot: /today, /analyze <id>, /status, /stats from your phone.
 
     \b
     1. In Telegram, message @BotFather, send /newbot, copy the token

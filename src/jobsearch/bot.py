@@ -19,7 +19,6 @@ HELP = """Commands:
 /today - new top matches, follow-ups, interviews
 /list - top 10 open matches
 /analyze <id> - what the job wants vs your resume
-/apply <id> - build the application kit and send the resume
 /status <id> <applied|interviewing|rejected|offer|withdrawn>
 /followups - what's due
 /stats - response and callback rates
@@ -70,17 +69,6 @@ class Bot:
             lines += [f"{t.status}: {t.term} ({t.job_count}x) - {t.action}" for t in a.terms[:12]
                       if t.status != "GOOD"]
             self.reply(chat, "\n".join(lines))
-        elif cmd == "/apply" and args:
-            self.reply(chat, "Building the kit, about a minute...")
-            out = pipeline.build_bundle(self.cfg, args[0], log=lambda m: None)
-            for p in sorted(out["dir"].glob("*.docx")):
-                self.send_file(chat, p)
-            letter = out["dir"] / "cover_letter.md"
-            if letter.exists():
-                self.send_file(chat, letter)
-            self.reply(chat, f"Coverage {out['result'].coverage_before:.0%} to "
-                             f"{out['result'].coverage_after:.0%}. Apply: {out['job'].get('url')}\n"
-                             f"Then send /status {args[0]} applied")
         elif cmd == "/status" and len(args) >= 2:
             if args[1] not in ("drafted", "applied", "interviewing", "rejected", "offer", "withdrawn"):
                 self.reply(chat, "Status must be applied, interviewing, rejected, offer, or withdrawn.")

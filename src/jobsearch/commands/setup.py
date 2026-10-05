@@ -8,8 +8,7 @@ from pathlib import Path
 import click
 
 from .. import company, db, google_api, keywords, pipeline, resume_io
-from ..config import (ANSWERS_PATH, CONFIG_PATH, RESUMES_DIR, SECRETS_DIR, STORIES_PATH,
-                      console, save_config, try_load_config)
+from ..config import CONFIG_PATH, RESUMES_DIR, SECRETS_DIR, console, save_config, try_load_config
 from ..sources import manual
 
 DEFAULT_EXCLUDE = ["senior", "sr.", "principal", "staff", "director", "vp", "head of", "lead", "manager"]
@@ -126,8 +125,7 @@ def setup() -> None:
         "tailor": cfg.get("tailor") or {"max_bullets_per_role": 5},
         "digest": cfg.get("digest") or {"min_score": 0.2, "max_items": 10, "weekly_report_day": "monday"},
         "alerts": cfg.get("alerts") or {"min_score": 0.35},
-        "email": cfg.get("email") or {"draft_followups": True, "auto_send_followups": False},
-    }
+            }
 
     _step(5, "Where should daily updates go?")
     channel = click.prompt("  Channel", type=click.Choice(["none", "telegram", "gmail", "smtp"]),
@@ -157,18 +155,15 @@ def setup() -> None:
             console.print("  Follow `jobsearch email connect --help` (one-time Google setup), then run it.")
 
     save_config(new_cfg)
-    for example, target_path in (("answers.example.yaml", ANSWERS_PATH), ("stories.example.yaml", STORIES_PATH)):
-        if Path(example).exists() and not target_path.exists():
-            shutil.copy(example, target_path)
     db.init_db()
     Path("applications").mkdir(exist_ok=True)
-    console.print(f"\n[green]Saved {CONFIG_PATH}.[/green] Also created answers.yaml and stories.yaml; fill them in when you can.")
+    console.print(f"\n[green]Saved {CONFIG_PATH}.[/green]")
 
     if any(sources.get(k) for k in sources) and click.confirm("\nPull jobs now?", default=True):
         pipeline.discover(new_cfg, log=console.print)
         pipeline.match(new_cfg, log=console.print)
         console.print("\nNext: [bold]jobsearch list[/bold], then [bold]jobsearch analyze <id>[/bold] "
-                      "and [bold]jobsearch apply <id>[/bold].")
+                      "and [bold]jobsearch prepare <id>[/bold].")
     else:
         console.print("\nNext: add companies with `jobsearch companies add <url>`, then `jobsearch discover`.")
 

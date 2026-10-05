@@ -19,7 +19,7 @@ resume_tracks:
   ops:
     path: resumes/ops_resume.txt        # .txt, .docx or .pdf
     # Optional: a longer resume with every bullet you've ever written.
-    # `tailor` and `apply` pick from this instead of `path`.
+    # `prepare` and `check` use this instead of `path`.
     # master: resumes/master_resume.docx
     # Keywords get an extra weight on top of TF-IDF similarity.
     keywords:
@@ -101,6 +101,9 @@ followup_days:
   interviewing: 5
   drafted: 3
 
+# Where per-job folders go (default ./applications)
+# applications_dir: ../applications
+
 # Extra terms for keyword analysis beyond the built-in skill list.
 keywords:
   extra: []
@@ -126,7 +129,3 @@ telegram:
   bot_token_env: TELEGRAM_BOT_TOKEN
   chat_id: ""
 
-# Gmail behavior (after `jobsearch email connect`)
-email:
-  draft_followups: true       # daily run creates Gmail drafts for due follow-ups
-  auto_send_followups: false  # true = send plain follow-ups without asking

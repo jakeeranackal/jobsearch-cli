@@ -1,12 +1,14 @@
-"""Gmail: connect, sync inbox into statuses, follow-up and thank-you drafts."""
+"""Gmail: connect, sync replies into statuses, and save emails you wrote as drafts."""
 from __future__ import annotations
 
 import sys
 
 import click
 
-from .. import db, google_api, inbox, letters
-from ..config import application_dir, company_name, console, load_config
+from pathlib import Path
+
+from .. import db, google_api, inbox
+from ..config import console, load_config
 
 
 def _gmail_or_exit():
@@ -61,53 +63,15 @@ def sync(days: int, dry_run: bool) -> None:
         console.print("[dim]Dry run, nothing saved.[/dim]")
 
 
-def queue_followups(cfg: dict, rows: list[dict], send: bool = False) -> None:
-    """Draft (or send, with confirmation) a follow-up for each due application."""
-    user = cfg.get("user") or {}
-    auto_send = bool((cfg.get("email") or {}).get("auto_send_followups"))
-    service = google_api.gmail() if google_api.is_configured() else None
-    with db.connect() as conn:
-        for r in rows:
-            job = db.get_job(conn, r["job_id"])
-            subject, body = letters.followup_email(user, job)
-            to = r.get("contact_email")
-            path = application_dir(r["job_id"]) / "followup.md"
-            path.write_text(f"To: {to or '[ADD recipient]'}\nSubject: {subject}\n\n{body}\n", encoding="utf-8")
-            label = f"{job['title']} at {company_name(job)}"
-            if not service or not to:
-                console.print(f"  [yellow]{label}:[/yellow] draft saved to {path}"
-                              + ("" if to else " (no contact email; add one with `track --contact-email`)"))
-                continue
-            if send and (auto_send or click.confirm(f"Send follow-up to {to} for {label}?", default=False)):
-                google_api.send(service, to, subject, body)
-                console.print(f"  [green]Sent[/green] to {to}: {label}")
-            else:
-                google_api.create_draft(service, to, subject, body)
-                console.print(f"  [green]Gmail draft created[/green] for {label}")
-            # Push the next reminder out so the same follow-up isn't drafted daily.
-            db.update_application(conn, r["job_id"], r["status"], followup_days=cfg.get("followup_days") or {})
+@email.command()
+@click.argument("file", type=click.Path(exists=True, dir_okay=False))
+@click.option("--to", "to_email", required=True)
+@click.option("--subject", required=True)
+def draft(file: str, to_email: str, subject: str) -> None:
+    """Put an email you wrote (FILE) into Gmail Drafts. It is never sent from here."""
+    body = Path(file).read_text(encoding="utf-8").strip()
+    google_api.create_draft(_gmail_or_exit(), to_email, subject, body)
+    console.print(f"[green]Saved to Gmail Drafts[/green] for {to_email}. Review and send it yourself.")
 
 
-@click.command()
-@click.argument("job_id")
-@click.option("--to", "to_email", default=None, help="Interviewer's email.")
-@click.option("--name", "interviewer", default=None, help="Interviewer's name.")
-@click.option("--notes", default=None, help="Something specific you talked about.")
-def thanks(job_id: str, to_email: str | None, interviewer: str | None, notes: str | None) -> None:
-    """Draft a thank-you note after an interview (Gmail draft if connected)."""
-    cfg = load_config()
-    with db.connect() as conn:
-        job = db.get_job(conn, job_id)
-    if not job:
-        console.print(f"[red]No job with id {job_id}.[/red]")
-        sys.exit(1)
-    subject, body = letters.thank_you_email(cfg.get("user") or {}, job, interviewer, notes)
-    path = application_dir(job_id) / "thank_you.md"
-    path.write_text(f"To: {to_email or '[ADD]'}\nSubject: {subject}\n\n{body}\n", encoding="utf-8")
-    if to_email and google_api.is_configured():
-        google_api.create_draft(google_api.gmail(), to_email, subject, body)
-        console.print("[green]Gmail draft created.[/green] Review and send within 24 hours.")
-    console.print(f"\nSubject: {subject}\n\n{body}\n\n[green]Saved[/green] {path}")
-
-
-COMMANDS = [email, thanks]
+COMMANDS = [email]

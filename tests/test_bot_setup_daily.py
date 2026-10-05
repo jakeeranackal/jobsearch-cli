@@ -3,42 +3,9 @@ from datetime import datetime, timedelta
 import yaml
 from click.testing import CliRunner
 
-from jobsearch import answers, automation, db, interview, keywords, letters, notify, pipeline
+from jobsearch import automation, db, notify, pipeline
 from jobsearch.bot import Bot
 from jobsearch.cli import cli
-
-
-def test_template_drafts(job, resume_text):
-    a = keywords.analyze_job(job, resume_text)
-    user = {"name": "Jordan Lee", "email": "j@x.com"}
-    letter = letters.cover_letter(user, job, resume_text, a)
-    assert "Acme Health" in letter and "Jordan Lee" in letter
-    subj, body = letters.followup_email(user, job, "Sam Park")
-    assert "Hi Sam" in body and "Data Analyst" in subj
-    subj, body = letters.thank_you_email(user, job, "Sam Park", "the Snowflake migration")
-    assert "Snowflake migration" in body
-    msgs = letters.outreach(user, job, a, "Priya S")
-    assert len(msgs["linkedin"]) <= 300 and "Hi Priya" in msgs["email_body"]
-
-
-def test_answers_render_fills_placeholders(job, resume_text):
-    a = keywords.analyze_job(job, resume_text)
-    bank = {"salary_expectation": "Targeting {salary_range}.", "why_this_role": "auto",
-            "custom": "ignored", "links": {"linkedin": "https://li/j"}}
-    text = answers.render(bank, job, {}, a)
-    assert "$75,000-$95,000" in text
-    assert "The Data Analyst role centers on" in text
-    assert "https://li/j" in text
-
-
-def test_prep_sheet_and_salary(job, resume_text):
-    a = keywords.analyze_job(job, resume_text)
-    stories = [{"title": "Dashboards for ops", "tags": ["tableau", "dashboards"], "result": "x"},
-               {"title": "Unrelated", "tags": ["cooking"]}]
-    sheet = interview.prep_sheet(job, resume_text, a, stories)
-    assert "Dashboards for ops" in sheet and "Unrelated" not in sheet
-    assert "Walk me through how you've used" in sheet
-    assert "$75,000 to $95,000" in interview.salary_help(job, a)
 
 
 def test_bot_commands(project, job, monkeypatch):
@@ -68,17 +35,15 @@ def test_bot_commands(project, job, monkeypatch):
         assert db.get_application(conn, job["id"])["status"] == "applied"
 
 
-def test_daily_run_offline_drafts_thank_you(project, job, monkeypatch):
+def test_daily_digest_reminds_about_thank_yous(project, job):
     cfg = yaml.safe_load((project / "config.yaml").read_text())
     with db.connect() as conn:
         db.upsert_job(conn, job)
         start = (datetime.now() - timedelta(hours=3)).isoformat(timespec="minutes")
         conn.execute("INSERT INTO interviews (job_id, starts_at, duration_min, interviewer) "
                      "VALUES (?, ?, 45, 'Sam Park')", (job["id"], start))
-    automation.run_daily(cfg, log=lambda m: None)
-    assert (project / "applications" / "manual_acme-health_1" / "thank_you.md").exists()
-    with db.connect() as conn:
-        assert conn.execute("SELECT thanks_drafted FROM interviews").fetchone()[0] == 1
+    text = automation.run_daily(cfg, log=lambda m: None)
+    assert "send a thank-you" in text and "Sam Park" in text
 
 
 def test_runner_script_written(project):

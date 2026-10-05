@@ -1,11 +1,14 @@
 """click-based CLI for jobsearch.
 
 Core:       setup, init, discover, match, list, add, track, applications, followup
-Per job:    analyze, tailor, check, export, letter, answers, apply, outreach, ats
+Per job:    analyze, prepare, check, export, contacts, ats
 Market:     keywords, companies
-Email:      email connect/sync, followup --draft, thanks
-Interviews: interview add, prep, salary
+Email:      email connect/sync/draft
+Interviews: interview add/list
 Insight:    stats, report, digest
+
+The tool finds, scores, analyzes, tracks and checks. Writing (resume wording,
+letters, emails, interview prep) is done by you or Claude Code.
 Automation: daily, schedule, dashboard, bot
 Network:    network import, referrals
 """
@@ -20,8 +23,7 @@ import click
 from rich.table import Table
 
 from . import db, drafter, pipeline, quality, resume_io
-from .config import (ANSWERS_PATH, CONFIG_PATH, DRAFTS_DIR, EXAMPLE_CONFIG, STORIES_PATH,
-                     company_name, console, load_config)
+from .config import CONFIG_PATH, DRAFTS_DIR, EXAMPLE_CONFIG, company_name, console, load_config
 from .pipeline import passes_filters  # noqa: F401  (kept for backward compatibility)
 
 
@@ -45,10 +47,6 @@ def init() -> None:
     else:
         console.print("[red]config.example.yaml is missing.[/red]")
         sys.exit(1)
-
-    for example, target in (("answers.example.yaml", ANSWERS_PATH), ("stories.example.yaml", STORIES_PATH)):
-        if Path(example).exists() and not target.exists():
-            shutil.copy(example, target)
 
     db.init_db()
     console.print(f"[green]Initialized {db.DEFAULT_DB}[/green]")
@@ -266,9 +264,7 @@ def due_followups(conn) -> list[dict]:
 
 
 @cli.command()
-@click.option("--draft", "make_drafts", is_flag=True, help="Write follow-up emails (Gmail drafts if connected).")
-@click.option("--send", is_flag=True, help="Send follow-ups via Gmail, confirming each one.")
-def followup(make_drafts: bool, send: bool) -> None:
+def followup() -> None:
     """Show applications whose next_followup_at is in the past."""
     with db.connect() as conn:
         rows = due_followups(conn)
@@ -290,10 +286,6 @@ def followup(make_drafts: bool, send: bool) -> None:
             r["status"], r["title"], company_name(r), r["contact_email"] or "", r["notes"] or "",
         )
     console.print(table)
-    if make_drafts or send:
-        from .commands.email import queue_followups
-
-        queue_followups(load_config(), rows, send=send)
 
 
 def _register() -> None:

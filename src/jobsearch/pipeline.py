@@ -2,11 +2,10 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 from typing import Callable
 
-from . import answers, company, db, interview, jd, keywords, letters, matcher, quality, resume_io, tailor
-from .config import ANSWERS_PATH, STORIES_PATH, application_dir, company_name, load_yaml
+from . import db, jd, keywords, matcher, quality, resume_io, tailor
+from .config import application_dir, company_name
 from .sources import ashby, greenhouse, lever, rss, smartrecruiters, workable, workday
 
 Log = Callable[[str], None]
@@ -142,56 +141,44 @@ def job_and_track(conn, job_id: str) -> tuple[dict, str | None, float]:
     return job, (best[0] if best else None), (best[1] if best else 0.0)
 
 
-def build_bundle(cfg: dict, job_id: str, *, with_brief: bool = True, log: Log = print) -> dict:
-    """Everything to apply to one job, written to applications/<job>/."""
+def prepare(cfg: dict, job_id: str, log: Log = print) -> dict:
+    """Write the facts for one application into its folder; the writing happens elsewhere.
+
+    posting.md is the full posting, analysis.md the requirement/resume comparison,
+    and <name>_Resume_<company>.md your resume reordered for this job, ready to edit.
+    """
     with db.connect() as conn:
-        job, track, score = job_and_track(conn, job_id)
+        job, track, _ = job_and_track(conn, job_id)
         track, resume_text = resume_for(cfg, track)
         terms = extra_terms(cfg)
-        out_dir = application_dir(job_id)
+        out_dir = application_dir(job, cfg)
 
+        (out_dir / "posting.md").write_text(posting_markdown(job), encoding="utf-8")
         analysis = keywords.analyze_job(job, resume_text, terms)
         (out_dir / "analysis.md").write_text(analysis_markdown(job, analysis), encoding="utf-8")
-        log("  analysis.md")
 
         result = tailor.tailor(job, resume_text, extra_terms=terms,
                                max_bullets=int((cfg.get("tailor") or {}).get("max_bullets_per_role", 5)))
         stem = _resume_stem(cfg, job)
-        resume_io.write_markdown(result.resume, out_dir / f"{stem}.md")
-        resume_path = resume_io.write_docx(result.resume, out_dir / f"{stem}.docx")
+        resume_md = resume_io.write_markdown(result.resume, out_dir / f"{stem}.md")
         (out_dir / "tailor_notes.md").write_text(tailor_markdown(result), encoding="utf-8")
-        log(f"  {stem}.docx (draft, reordered for this job)")
+        log(f"  {out_dir}: posting.md, analysis.md, {stem}.md, tailor_notes.md")
 
-        brief = None
-        if with_brief:
-            try:
-                brief = company.brief(conn, job)
-                (out_dir / "company.md").write_text(brief, encoding="utf-8")
-                log("  company.md")
-            except Exception as e:  # noqa: BLE001
-                log(f"  [yellow]company brief skipped: {e}[/yellow]")
+        app = db.get_application(conn, job_id)
+        db.update_application(conn, job_id, (app or {}).get("status") or "drafted",
+                              followup_days=cfg.get("followup_days") or {}, resume_track=track,
+                              resume_path=str(resume_md), bundle_dir=str(out_dir))
+    return {"dir": out_dir, "job": job, "result": result, "analysis": analysis, "resume": resume_md}
 
-        tailored_text = result.resume.to_text()
-        letter = letters.cover_letter(cfg.get("user") or {}, job, tailored_text, analysis,
-                                      track=track, score=score)
-        letter_path = out_dir / "cover_letter.md"
-        letter_path.write_text(letter, encoding="utf-8")
-        log("  cover_letter.md")
 
-        bank = load_yaml(ANSWERS_PATH)
-        if bank:
-            (out_dir / "answers.md").write_text(
-                answers.render(bank, job, cfg, analysis), encoding="utf-8")
-            log("  answers.md")
-
-        (out_dir / "CLAUDE_BRIEF.md").write_text(
-            claude_brief(job, job_id, stem, analysis, result, has_answers=bool(bank)), encoding="utf-8")
-        log("  CLAUDE_BRIEF.md (instructions for Claude Code to finish the rewrite)")
-
-        db.update_application(conn, job_id, "drafted", followup_days=cfg.get("followup_days") or {},
-                              resume_track=track, cover_letter_path=str(letter_path),
-                              resume_path=str(resume_path), bundle_dir=str(out_dir))
-    return {"dir": out_dir, "job": job, "result": result, "analysis": analysis, "brief": brief}
+def posting_markdown(job: dict) -> str:
+    meta = [f"- Company: {company_name(job)}", f"- Location: {job.get('location') or 'n/a'}"]
+    if job.get("salary_min"):
+        meta.append(f"- Salary: ${job['salary_min']:,} to ${(job.get('salary_max') or job['salary_min']):,}")
+    if job.get("url"):
+        meta.append(f"- Link: {job['url']}")
+    meta.append(f"- Tracker id: {job['id']}")
+    return f"# {job.get('title')}\n\n" + "\n".join(meta) + f"\n\n---\n\n{job.get('description') or ''}\n"
 
 
 def _resume_stem(cfg: dict, job: dict) -> str:
@@ -234,64 +221,6 @@ def tailor_markdown(r: tailor.TailorResult) -> str:
     return "\n".join(lines) + "\n"
 
 
-def claude_brief(job: dict, job_id: str, stem: str, a: keywords.JobAnalysis,
-                 r: tailor.TailorResult, has_answers: bool) -> str:
-    """Instructions for Claude Code (or any editor) to finish this application by hand."""
-    todo = "\n".join(f"- {t}" for t in r.todo) or "- Nothing flagged."
-    reqs = ", ".join(t.term for t in a.top_requirements) or "see analysis.md"
-    return f"""# Finish this application: {job.get('title')} at {company_name(job)}
-
-This folder was built by jobsearch-cli. The resume here is your real resume,
-reordered for this job. The wording still needs a human (or Claude Code) pass.
-
-## Files
-- `{stem}.md`: the resume to edit (then regenerate the .docx, see below)
-- `analysis.md`: what the job asks for vs. what the resume shows
-- `cover_letter.md`: template letter with [ADD] / [CUSTOMIZE] markers
-{"- `answers.md`: application form answers with [ADD] markers" if has_answers else ""}
-- `company.md`: what we know about the company
-
-## Their top requirements
-{reqs}
-
-## Edits to make
-{todo}
-
-## Rules (non-negotiable)
-1. Use only facts already in the resume. Never add a tool, employer, title, date,
-   degree, or number the person didn't give you. If a requirement isn't covered,
-   leave it out; mention a learning plan in the cover letter only if they agree.
-2. Mirror the posting's wording only where it's accurate ("reports" becomes
-   "dashboards" only if they were dashboards).
-3. Keep every role, school and date. 3-6 bullets per role, strongest first,
-   each starting with a strong verb and keeping real results.
-4. Replace every [ADD] / [CUSTOMIZE] marker in the letter, asking the person when you
-   don't know the answer.
-5. Never submit the application. The person reviews and sends it themselves.
-
-## When the edits are done
-Run these from the tool folder (with its virtual environment active):
-    jobsearch check {job_id}
-    jobsearch export {job_id}
-`check` re-scores coverage and flags anything that isn't in the original resume.
-`export` rebuilds the .docx from the edited .md so the two match.
-"""
-
-
-def prep(cfg: dict, job_id: str) -> Path:
-    with db.connect() as conn:
-        job, track, _ = job_and_track(conn, job_id)
-        _, resume_text = resume_for(cfg, track)
-        analysis = keywords.analyze_job(job, resume_text, extra_terms(cfg))
-        out_dir = application_dir(job_id)
-        brief_path = out_dir / "company.md"
-        brief = brief_path.read_text(encoding="utf-8") if brief_path.exists() else company.brief(conn, job)
-    stories = load_yaml(STORIES_PATH).get("stories") or []
-    path = out_dir / "interview_prep.md"
-    path.write_text(interview.prep_sheet(job, resume_text, analysis, stories, brief), encoding="utf-8")
-    return path
-
-
 def digest(cfg: dict, *, only_new: bool = True, min_score: float | None = None,
            limit: int | None = None, mark: bool = True) -> tuple[str, int]:
     """Text digest of new top matches + follow-ups + interviews. Returns (text, new_count)."""
@@ -315,6 +244,11 @@ def digest(cfg: dict, *, only_new: bool = True, min_score: float | None = None,
                JOIN jobs j ON j.id = i.job_id WHERE i.starts_at BETWEEN ? AND ? ORDER BY i.starts_at""",
             (datetime.now().isoformat(timespec="minutes"),
              (datetime.now() + timedelta(days=2)).isoformat(timespec="minutes")))]
+        ended = [dict(r) for r in conn.execute(
+            """SELECT i.starts_at, i.interviewer, j.title, j.source_company, j.company_name FROM interviews i
+               JOIN jobs j ON j.id = i.job_id WHERE i.starts_at BETWEEN ? AND ? ORDER BY i.starts_at""",
+            ((datetime.now() - timedelta(days=1)).isoformat(timespec="minutes"),
+             datetime.now().isoformat(timespec="minutes")))]
         if mark and rows:
             conn.executemany("UPDATE jobs SET notified_at = ? WHERE id = ?",
                              [(now.isoformat(timespec="seconds"), r["id"]) for r in rows])
@@ -340,6 +274,10 @@ def digest(cfg: dict, *, only_new: bool = True, min_score: float | None = None,
     if soon:
         lines += ["", "Interviews in the next 48h:"]
         lines += [f"- {s['starts_at']}: {s['title']} at {company_name(s)}" for s in soon]
+    if ended:
+        lines += ["", "Interviews in the last day (send a thank-you):"]
+        lines += [f"- {e['title']} at {company_name(e)}" + (f" with {e['interviewer']}" if e["interviewer"] else "")
+                  for e in ended]
     if due:
         lines += ["", f"{len(due)} follow-up(s) due:"]
         lines += [f"- {x['title']} at {company_name(x)} ({x['status']})" for x in due]

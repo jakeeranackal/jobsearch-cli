@@ -5,44 +5,19 @@ import platform
 import shutil
 import subprocess
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from typing import Callable
 
-from . import db, google_api, inbox, letters, notify, pipeline, stats
-from .config import application_dir
+from . import db, google_api, inbox, notify, pipeline, stats
 
 Log = Callable[[str], None]
 TASK_DAILY = "jobsearch-daily"
 TASK_ALERTS = "jobsearch-alerts"
 
 
-def draft_thank_yous(cfg: dict, log: Log) -> int:
-    """Thank-you drafts for interviews that ended in the last day."""
-    now = datetime.now()
-    made = 0
-    with db.connect() as conn:
-        rows = [dict(r) for r in conn.execute(
-            "SELECT * FROM interviews WHERE thanks_drafted = 0 AND starts_at BETWEEN ? AND ?",
-            ((now - timedelta(days=1)).isoformat(timespec="minutes"), now.isoformat(timespec="minutes")))]
-        for iv in rows:
-            if datetime.fromisoformat(iv["starts_at"]) + timedelta(minutes=iv["duration_min"]) > now:
-                continue
-            job = db.get_job(conn, iv["job_id"])
-            subject, body = letters.thank_you_email(cfg.get("user") or {}, job, iv["interviewer"])
-            path = application_dir(iv["job_id"]) / "thank_you.md"
-            path.write_text(f"To: {iv['interviewer_email'] or '[ADD]'}\nSubject: {subject}\n\n{body}\n",
-                            encoding="utf-8")
-            if iv["interviewer_email"] and google_api.is_configured():
-                google_api.create_draft(google_api.gmail(), iv["interviewer_email"], subject, body)
-            conn.execute("UPDATE interviews SET thanks_drafted = 1 WHERE id = ?", (iv["id"],))
-            log(f"  Thank-you drafted: {job['title']} ({path})")
-            made += 1
-    return made
-
-
 def run_daily(cfg: dict, log: Log = print, alerts_only: bool = False) -> str:
-    """Discover, score, sync email, draft follow-ups/thank-yous, send the digest."""
+    """Discover, score, sync email statuses, and send the digest."""
     log(f"[bold]jobsearch daily: {datetime.now():%Y-%m-%d %H:%M}[/bold]")
     pipeline.discover(cfg, log=log)
     pipeline.match(cfg, log=log)
@@ -64,17 +39,6 @@ def run_daily(cfg: dict, log: Log = print, alerts_only: bool = False) -> str:
                     log(f"  Email: {e['company']} {e['change'][0]} to {e['change'][1]}")
         except Exception as e:  # noqa: BLE001
             log(f"  [yellow]Email sync skipped: {e}[/yellow]")
-
-    draft_thank_yous(cfg, log)
-
-    if (cfg.get("email") or {}).get("draft_followups") and google_api.is_configured():
-        from .cli import due_followups
-        from .commands.email import queue_followups
-
-        with db.connect() as conn:
-            due = due_followups(conn)
-        if due:
-            queue_followups(cfg, due, send=bool((cfg.get("email") or {}).get("auto_send_followups")))
 
     text, n = pipeline.digest(cfg, only_new=True)
     report_day = (cfg.get("digest") or {}).get("weekly_report_day", "monday").lower()

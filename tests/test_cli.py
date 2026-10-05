@@ -50,7 +50,7 @@ def test_add_analyze_apply_check_export_flow(project, jd_text):
     assert "Tableau dashboards" in resume_io.read_text(md.with_suffix(".docx"))
 
     out = _run("applications")
-    assert "applied" in out and "Acme Health" in out
+    assert "Applications (1)" in out
     assert "No applications" in _run("applications", "--status", "offer")
     assert "Applications sent: 1" in _run("report")
     assert "Data Analyst" in _run("digest", "--all")

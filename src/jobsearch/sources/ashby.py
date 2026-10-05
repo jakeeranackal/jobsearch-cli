@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import httpx
 
-from .base import strip_html
+from .base import html_to_text
 
 API = "https://api.ashbyhq.com/posting-api/job-board/{slug}"
 
@@ -28,7 +28,7 @@ def fetch(slug: str, *, timeout: float = 15.0) -> list[dict]:
             "title": j.get("title", ""),
             "location": j.get("location"),
             "department": j.get("department") or j.get("team"),
-            "description": strip_html(
+            "description": html_to_text(
                 j.get("descriptionHtml") or j.get("descriptionPlain") or ""
             ),
             "url": j.get("jobUrl") or j.get("applyUrl", ""),

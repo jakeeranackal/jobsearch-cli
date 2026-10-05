@@ -1,5 +1,6 @@
 # jobsearch-cli configuration
-# Copy this file to config.yaml and edit. config.yaml is gitignored so your
+# Easiest: run `jobsearch setup` and it writes this for you.
+# Or copy this file to config.yaml and edit. config.yaml is gitignored so your
 # personal info stays out of the repo.
 
 user:
@@ -9,13 +10,17 @@ user:
   location: City, ST
   linkedin: https://linkedin.com/in/yourhandle
   github: https://github.com/yourhandle
+  timezone: America/New_York
 
 # Resume tracks let you maintain multiple versions of your resume — e.g. one
 # focused on operations roles and one on data/analytics roles. The matcher
 # scores every job against every track and picks the best fit per job.
 resume_tracks:
   ops:
-    path: resumes/ops_resume.txt
+    path: resumes/ops_resume.txt        # .txt, .docx or .pdf
+    # Optional: a longer resume with every bullet you've ever written.
+    # `tailor` and `apply` pick from this instead of `path`.
+    # master: resumes/master_resume.docx
     # Keywords get an extra weight on top of TF-IDF similarity.
     keywords:
       - client services
@@ -35,9 +40,17 @@ resume_tracks:
       - regression
       - sports analytics
 
+# What you're targeting. roles also feed Workday searches.
+search:
+  roles: [data analyst, business analyst]
+  salary_floor: 60000        # `list` hides jobs whose posted max is below this
+  weekly_target: 10          # applications per week, used by `report`
+
 # Optional hard filters — jobs that don't match these are dropped at discover time.
 filters:
   # Drop jobs with these substrings in the title (case-insensitive)
+  # Only keep titles containing one of these (empty = keep all)
+  include_title_terms: []
   exclude_title_terms:
     - senior
     - principal
@@ -60,6 +73,10 @@ filters:
 #   Greenhouse: https://boards.greenhouse.io/SLUG  -> use SLUG
 #   Lever:      https://jobs.lever.co/SLUG         -> use SLUG
 #   Ashby:      https://jobs.ashbyhq.com/SLUG      -> use SLUG
+#   Workable:   https://apply.workable.com/SLUG    -> use SLUG
+#   SmartRecruiters: https://jobs.smartrecruiters.com/SLUG -> use SLUG
+#   Workday:    https://HOST.myworkdayjobs.com/SITE -> use HOST/SITE
+# Or skip all that: `jobsearch companies add <careers url>` figures it out.
 sources:
   greenhouse: []
     # - airbnb
@@ -68,6 +85,10 @@ sources:
     # - netflix
   ashby: []
     # - openai
+  workable: []
+  smartrecruiters: []
+  workday: []
+    # - nvidia.wd5.myworkdayjobs.com/NVIDIAExternalCareerSite
   rss:
     []
     # - name: Example Company Careers
@@ -79,3 +100,40 @@ followup_days:
   applied: 7
   interviewing: 5
   drafted: 3
+
+# Extra terms for keyword analysis beyond the built-in skill list.
+keywords:
+  extra: []
+
+# Claude writing (optional). Needs ANTHROPIC_API_KEY in your environment.
+llm:
+  model: claude-opus-5-5
+  effort: medium        # low | medium | high
+  # enabled: false      # force template-only mode
+
+tailor:
+  max_bullets_per_role: 5
+
+# Daily digest and alerts
+digest:
+  min_score: 0.2
+  max_items: 10
+  weekly_report_day: monday
+alerts:
+  min_score: 0.35       # hourly alerts only ping above this
+
+# Where the digest goes: none | telegram | gmail | smtp
+notify:
+  channel: none
+  email_to: you@example.com
+  # smtp: {host: smtp.gmail.com, port: 587, user: you@gmail.com, password_env: JOBSEARCH_SMTP_PASSWORD}
+
+telegram:
+  bot_token_env: TELEGRAM_BOT_TOKEN
+  chat_id: ""
+
+# Gmail behavior (after `jobsearch email connect`)
+email:
+  draft_followups: true       # daily run creates Gmail drafts for due follow-ups
+  auto_send_followups: false  # true = send plain follow-ups without asking
+  ai_classify: false          # ask Claude about emails the rules can't classify

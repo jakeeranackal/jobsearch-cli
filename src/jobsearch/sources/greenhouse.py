@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import httpx
 
-from .base import strip_html
+from .base import html_to_text
 
 API = "https://boards-api.greenhouse.io/v1/boards/{slug}/jobs"
 
@@ -29,7 +29,7 @@ def fetch(slug: str, *, timeout: float = 15.0) -> list[dict]:
             "title": j.get("title", ""),
             "location": (j.get("location") or {}).get("name"),
             "department": _first_dept(j),
-            "description": strip_html(j.get("content", "")),
+            "description": html_to_text(j.get("content", "")),
             "url": j.get("absolute_url", ""),
             "posted_at": j.get("updated_at"),
         })

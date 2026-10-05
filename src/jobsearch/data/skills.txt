@@ -1,0 +1,192 @@
+# Skill lexicon used by keyword analysis.
+# One skill per line: canonical name, then aliases, separated by "|".
+# Matching is case-insensitive on word boundaries. Add your field's terms freely.
+# [wording] groups are near-synonyms: if the job says one and your resume says
+# another, the analysis suggests mirroring the job's wording.
+
+[data & analytics]
+SQL | t-sql | tsql | pl/sql | postgresql | postgres | mysql | sql server | ms sql
+Python | python3
+R language | r programming | rstudio | r studio
+Excel | microsoft excel | ms excel | advanced excel
+Pivot tables | pivot table | pivottables
+VLOOKUP | xlookup | index match
+Power Query
+Tableau | tableau desktop | tableau server
+Power BI | powerbi | power bi desktop
+Looker | looker studio | google data studio
+Qlik | qlikview | qlik sense
+Alteryx
+SAS
+SPSS
+Stata
+pandas
+NumPy
+scikit-learn | sklearn
+TensorFlow
+PyTorch
+Jupyter | jupyter notebook | jupyter notebooks
+dbt | data build tool
+Airflow | apache airflow
+Spark | apache spark | pyspark
+Hadoop
+Snowflake
+BigQuery | google bigquery
+Redshift | amazon redshift
+Databricks
+ETL | elt | data pipelines | data pipeline
+Data modeling | data modelling | dimensional modeling | star schema
+Data warehousing | data warehouse
+Data visualization | data visualisation | data viz
+Data analysis | data analytics | analyzing data
+Data cleaning | data cleansing | data wrangling | data preparation
+Data quality | data integrity | data validation
+Data governance
+Statistics | statistical analysis | statistical methods
+Regression | regression analysis | linear regression | logistic regression
+A/B testing | ab testing | a/b tests | experimentation | split testing
+Hypothesis testing
+Forecasting | forecast | demand forecasting
+Machine learning | ml
+Predictive modeling | predictive models | predictive analytics
+Natural language processing | nlp
+Deep learning
+LLMs | large language models | generative ai | genai
+KPIs | kpi | key performance indicators | metrics
+Dashboards | dashboard | dashboarding
+Reporting | reports | ad hoc reporting | ad-hoc reporting
+Business intelligence | bi
+Google Analytics | ga4
+Mixpanel
+Amplitude
+Segment
+Salesforce | sfdc
+HubSpot
+Google Sheets
+Clinical trials | clinical trial | clinical research
+CDISC | sdtm | adam
+EDC | electronic data capture | medidata rave | rave
+Good Clinical Practice | ich gcp
+HIPAA
+
+[engineering]
+Java
+JavaScript | js | ecmascript
+TypeScript
+C# | c sharp | .net | asp.net
+C++ | cpp
+Go language | golang
+Rust
+Ruby | ruby on rails | rails
+PHP
+Swift
+Kotlin
+HTML | html5
+CSS | css3 | tailwind | sass
+React | react.js | reactjs
+Next.js | nextjs
+Vue | vue.js | vuejs
+Angular
+Node.js | nodejs
+Django
+Flask
+FastAPI
+Spring Boot
+REST APIs | rest api | restful
+GraphQL
+Microservices | microservice
+AWS | amazon web services | ec2 | s3 | lambda
+Azure | microsoft azure
+Google Cloud | gcp | google cloud platform
+Docker | containers | containerization
+Kubernetes | k8s
+Terraform | infrastructure as code | iac
+CI/CD | ci cd | continuous integration | continuous delivery | github actions | jenkins
+Git | github | gitlab | version control
+Linux | unix | bash | shell scripting
+Unit testing | unit tests | pytest | jest | junit | tdd | test-driven development
+MongoDB | mongo
+Redis
+Kafka | apache kafka
+Supabase
+Firebase
+System design
+Security | cybersecurity | information security | infosec
+Agile | scrum | kanban | sprint planning
+Jira
+Confluence
+
+[business & operations]
+Project management | project manager | managing projects
+Program management
+Product management | product manager
+Stakeholder management | stakeholders | stakeholder | cross-functional stakeholders
+Cross-functional collaboration | cross-functional | cross functional | cross-functional teams
+Process improvement | continuous improvement | process optimization | streamline processes
+Lean | lean six sigma | six sigma
+Operations | operational | ops
+Supply chain | logistics | procurement
+Inventory management | inventory
+Vendor management | vendors | vendor relationships
+Budgeting | budget management | budgets
+Financial analysis | financial modeling | financial modelling | fp&a
+Accounting | gaap | reconciliation | reconciliations
+QuickBooks
+Customer service | customer support | client support
+Client services | client relations | client relationships | account management
+Customer success
+CRM | customer relationship management
+Sales | business development | lead generation | prospecting
+Marketing | digital marketing | growth marketing
+SEO | search engine optimization
+Content marketing | copywriting | content creation
+Social media | social media marketing
+Event planning | events | event management | event coordination
+Hospitality
+VIP | vip services | high-net-worth | hnw
+Scheduling | calendar management
+Coordination | coordinate | coordinating | coordinator
+Training | onboarding | mentoring | coaching
+Recruiting | talent acquisition | sourcing candidates
+Compliance | regulatory | regulatory compliance | sox
+Risk management | risk assessment
+Quality assurance | qa | quality control | qc
+Documentation | technical writing | sops | standard operating procedures
+Microsoft Office | ms office | microsoft 365 | office 365
+PowerPoint | presentations | slide decks
+Google Workspace | g suite
+Notion
+Asana
+Monday.com
+Smartsheet
+Airtable
+Zapier
+Workday HCM
+SAP
+Oracle
+NetSuite
+
+[soft skills]
+Communication | communication skills | written and verbal communication | verbal communication
+Presentation skills | presenting | public speaking
+Team leadership | leadership skills | leading teams | team lead | led a team | people management | managed a team
+Problem solving | problem-solving | troubleshooting
+Attention to detail | detail-oriented | detail oriented
+Time management | prioritization | prioritize | multitasking | multi-task
+Analytical skills | analytical | analytical thinking | critical thinking
+Collaboration | teamwork | collaborative
+Adaptability | fast-paced | fast paced | ambiguity
+Ownership | self-starter | self starter | proactive | initiative
+Negotiation
+Storytelling | data storytelling
+
+[wording]
+dashboards ~ reports ~ visualizations ~ scorecards
+stakeholders ~ clients ~ business partners ~ internal customers
+automated ~ streamlined ~ scripted
+analyzed ~ evaluated ~ assessed
+led ~ managed ~ owned ~ drove
+built ~ developed ~ created ~ designed
+improved ~ increased ~ optimized ~ enhanced
+reduced ~ decreased ~ cut ~ lowered
+insights ~ findings ~ recommendations

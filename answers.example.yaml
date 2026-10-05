@@ -1,0 +1,25 @@
+# Answers to the questions every application form asks.
+# Copy to answers.yaml (gitignored) and fill in. {company} and {title} are
+# filled per job. Set a value to "auto" to have Claude draft it from your
+# resume and the posting (needs an API key; otherwise you get a template).
+
+work_authorization: "Yes, I am authorized to work in the United States."
+require_sponsorship: "No"
+salary_expectation: "I'm targeting {salary_range}, and I'm flexible depending on the full package."
+start_date: "Two weeks after an offer."
+willing_to_relocate: "Open to it for the right role."
+remote_preference: "Open to remote, hybrid, or on-site."
+how_did_you_hear: "Your careers page."
+why_this_company: auto
+why_this_role: auto
+greatest_strength: auto
+links:
+  linkedin: ""
+  github: ""
+  portfolio: ""
+# Voluntary EEO questions: answer or "Decline to self-identify".
+eeo:
+  gender: "Decline to self-identify"
+  race: "Decline to self-identify"
+  veteran: "I am not a protected veteran"
+  disability: "Decline to self-identify"

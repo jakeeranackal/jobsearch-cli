@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Job Pipeline</title>
+<style>
+:root {
+  --bg: #f4f1ea; --surface: #fffdf7; --ink: #1c1b18; --muted: #6f6a60; --line: #e2dccf;
+  --accent: #2346d8; --good: #1f7a4d; --warn: #b26a00; --bad: #b3361f;
+  --lane: #ebe6da; --shadow: 0 1px 0 rgba(0,0,0,.04), 0 10px 24px -18px rgba(30,25,10,.45);
+  --serif: "Iowan Old Style", Georgia, serif; --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #141412; --surface: #1d1c19; --ink: #ece7dc; --muted: #9b958a; --line: #302e29;
+    --lane: #191816; --accent: #7d95ff; --good: #5cc48f; --warn: #e3a64a; --bad: #ef7a62;
+    --shadow: 0 1px 0 rgba(255,255,255,.03), 0 12px 26px -18px rgba(0,0,0,.8); }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 var(--sans); }
+header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 12px 28px; padding: 28px 16px 18px;
+  max-width: 1600px; margin: 0 auto; }
+h1 { font: 600 2.1rem/1 var(--serif); margin: 0; letter-spacing: -.02em; }
+.kpis { display: flex; gap: 22px; color: var(--muted); }
+.kpis b { display: block; font: 600 1.35rem/1.1 var(--serif); color: var(--ink); }
+.hint { color: var(--muted); font-size: .8rem; margin-left: auto; }
+main { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(250px, 1fr); gap: 14px;
+  padding: 0 16px 40px; max-width: 1600px; margin: 0 auto; overflow-x: auto; }
+@media (max-width: 760px) { main { grid-auto-flow: row; grid-auto-columns: auto; overflow-x: visible; } }
+.lane { background: var(--lane); border-radius: 8px; padding: 12px 10px 14px; min-height: 140px;
+  transition: outline-color .15s ease; outline: 2px dashed transparent; outline-offset: -4px; }
+.lane.over { outline-color: var(--accent); }
+.lane h2 { font: 600 .78rem/1 var(--sans); text-transform: uppercase; letter-spacing: .08em;
+  color: var(--muted); margin: 2px 4px 12px; display: flex; justify-content: space-between; }
+.lane[data-status="matches"] { background: transparent; border: 1px solid var(--line); }
+.card { background: var(--surface); border-radius: 6px; padding: 10px 11px 9px; margin-bottom: 8px;
+  box-shadow: var(--shadow); cursor: grab; border-left: 3px solid transparent;
+  transition: transform .12s ease, box-shadow .12s ease; }
+.card:hover { transform: translateY(-1px); }
+.card:focus-within { border-left-color: var(--accent); }
+.card.dragging { opacity: .45; }
+.card .t { font-weight: 600; line-height: 1.3; }
+.card .t a { color: inherit; text-decoration: none; }
+.card .t a:hover { text-decoration: underline; text-decoration-color: var(--accent); }
+.card .c { color: var(--muted); font-size: .85rem; margin-top: 2px; }
+.meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; align-items: center; }
+.pill { font-size: .72rem; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
+.pill.score { color: var(--good); border-color: currentColor; font-weight: 600; }
+.pill.flag { color: var(--warn); border-color: currentColor; }
+.pill.due { color: var(--bad); border-color: currentColor; }
+select { margin-left: auto; font: inherit; font-size: .72rem; color: var(--muted); background: transparent;
+  border: 1px solid var(--line); border-radius: 4px; padding: 1px 3px; }
+.empty { color: var(--muted); font-size: .8rem; text-align: center; padding: 18px 4px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Pipeline</h1>
+  <div class="kpis" id="kpis"></div>
+  <div class="hint">Drag cards between columns, or use the menu on each card.</div>
+</header>
+<main id="board"></main>
+<script>
+const LANES = [["matches","Top matches"],["drafted","Drafted"],["applied","Applied"],
+  ["interviewing","Interviewing"],["offer","Offer"],["closed","Closed"]];
+const MOVES = ["drafted","applied","interviewing","offer","rejected","withdrawn"];
+const today = new Date().toISOString().slice(0,10);
+
+function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls;
+  if (text != null) e.textContent = text; return e; }
+
+function card(c) {
+  const d = el("article", "card"); d.draggable = true; d.dataset.id = c.id;
+  const t = el("div", "t"); const a = el("a", null, c.title); a.href = c.url || "#"; a.target = "_blank";
+  a.rel = "noopener"; t.append(a); d.append(t, el("div", "c", [c.company, c.location].filter(Boolean).join(" · ")));
+  const m = el("div", "meta");
+  if (c.score) m.append(el("span", "pill score", c.score.toFixed(2)));
+  if (c.age != null) m.append(el("span", "pill", c.age + "d"));
+  if (c.salary) m.append(el("span", "pill", c.salary));
+  if (c.flags) m.append(el("span", "pill flag", c.flags));
+  if (c.followup && c.followup <= today) m.append(el("span", "pill due", "follow up"));
+  if (c.status) m.append(el("span", "pill", c.status));
+  const s = el("select"); s.setAttribute("aria-label", "Move " + c.title);
+  s.append(new Option("move…", "")); MOVES.forEach(v => s.append(new Option(v, v)));
+  s.onchange = () => s.value && move(c.id, s.value);
+  m.append(s); d.append(m);
+  d.addEventListener("dragstart", e => { d.classList.add("dragging"); e.dataTransfer.setData("text/plain", c.id); });
+  d.addEventListener("dragend", () => d.classList.remove("dragging"));
+  return d;
+}
+
+async function move(id, status) {
+  if (status === "matches") return;
+  if (status === "closed") status = "rejected";
+  const r = await fetch("/api/status", { method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ job_id: id, status }) });
+  if (!r.ok) alert("Couldn't update: " + (await r.text()));
+  load();
+}
+
+async function load() {
+  const data = await (await fetch("/api/board")).json();
+  const k = document.getElementById("kpis"); k.replaceChildren();
+  [["Applied", data.stats.applied], ["Response rate", Math.round(data.stats.response_rate*100)+"%"],
+   ["Callback rate", Math.round(data.stats.callback_rate*100)+"%"]].forEach(([l,v]) => {
+    const s = el("span", null, l); s.prepend(el("b", null, v)); k.append(s); });
+  const b = document.getElementById("board"); b.replaceChildren();
+  for (const [key, label] of LANES) {
+    const lane = el("section", "lane"); lane.dataset.status = key;
+    const items = data.columns[key] || [];
+    const h = el("h2"); h.append(el("span", null, label), el("span", null, items.length)); lane.append(h);
+    items.forEach(c => lane.append(card(c)));
+    if (!items.length) lane.append(el("div", "empty", "Nothing here yet"));
+    lane.addEventListener("dragover", e => { e.preventDefault(); lane.classList.add("over"); });
+    lane.addEventListener("dragleave", () => lane.classList.remove("over"));
+    lane.addEventListener("drop", e => { e.preventDefault(); lane.classList.remove("over");
+      move(e.dataTransfer.getData("text/plain"), key); });
+    b.append(lane);
+  }
+}
+load();
+</script>
+</body>
+</html>

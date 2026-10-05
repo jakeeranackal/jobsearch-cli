@@ -38,11 +38,43 @@
                        drafts/{job_id}.md  +  applications row
 ```
 
+### v0.2: from a matched job to an application
+
+```
+jobs row ──► jd.parse()            sections: required / preferred / responsibilities / ignored
+               │
+               ▼
+         keywords.analyze_job()    lexicon terms weighted by section + title,
+               │                   compared to resume bullets vs skills list
+               ▼                   ──► GOOD / BURIED / STRENGTHEN / WORDING / MISSING
+         tailor.tailor()           Claude rewrite (facts from master resume only)
+               │                   or reorder bullets/skills by job weight
+               ▼                   ──► fabrication_check() on the result
+         pipeline.build_bundle()   resume .docx/.md, cover letter, answers, company brief
+               │
+               ▼
+         applications/<job>/  +  applications row (status, resume_path, bundle_dir)
+```
+
+### After applying
+
+```
+Gmail ──► inbox.classify() ──► inbox.match_job() ──► db.update_application()  (forward only)
+interviews table ──► automation.draft_thank_yous()
+applications.next_followup_at ──► letters.followup_email() ──► Gmail draft
+status_history ──► stats.funnel() / stats.weekly()
+automation.run_daily() runs all of the above, then notify.send(digest)
+```
+
 ## Why these choices
 
 - **SQLite, not Postgres**: this is a single-user CLI. The DB file lives next to the project. No server, no docker, no migrations to manage. If a multi-user version ships, swap with SQLAlchemy.
 - **TF-IDF + keyword density, not embeddings**: explainable, fast, no API key needed, no cost. For the volume of jobs a single person looks at (low hundreds), this is plenty. Embeddings can replace `matcher.py` in v0.3 without changing the rest.
 - **httpx, not requests**: same ergonomics, async-ready if v0.2 needs concurrent fetches.
+- **Lexicon, not free-text NLP, for keywords**: `data/skills.txt` maps aliases ("PowerBI", "power bi desktop") to one skill so counts are honest and the output is explainable. Repeated phrases outside the lexicon are still surfaced. Users extend it via `keywords.extra` in config.
+- **Section-aware weighting**: a skill in Requirements or the title outweighs one in Nice-to-have, and benefits/EEO text is ignored. Headings are recognized by phrase; checked against live Greenhouse, Lever and Ashby postings (~95% get a Requirements section).
+- **AI is optional and guarded**: every Claude feature has a template/reorder fallback. Tailoring sends the master resume as the only source of facts and then diffs skills and numbers against it.
+- **Email only moves status forward**: an "application received" after an interview invite never downgrades the row.
 - **Drafts go to disk as Markdown**: the user *will* edit them. Markdown is the path of least resistance and pastes cleanly into email, Google Docs, or an ATS textarea.
 
 ## Adding a new source
@@ -55,5 +87,6 @@
 ## What's deliberately *not* here
 
 - **Auto-submitting applications.** This violates the ToS of every major job board and ATS, and recruiters can spot bot-submitted applications. The tool drafts; the human sends.
-- **Resume parsing from PDF/DOCX.** Plain text only. Users keep their own resume source files; the tool stays a tool.
-- **A web UI.** v1 is a CLI. A Streamlit or FastAPI layer can sit on top of the same DB later.
+- **Sending applications or messages on its own.** Follow-ups can auto-send only if you opt in (`email.auto_send_followups`); everything else is a draft.
+- **Scraping LinkedIn/Indeed.** Paste listings with `add --paste`; import your own connections from LinkedIn's data export.
+- **A hosted web app.** The dashboard is a local, stdlib-only page on 127.0.0.1 over the same DB.

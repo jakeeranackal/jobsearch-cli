@@ -1,0 +1,20 @@
+Jordan Lee
+jordan@example.com | 555-123-4567 | Philadelphia, PA
+
+SUMMARY
+Analyst who turns messy data into reports people use.
+
+EXPERIENCE
+Data Analyst, Numoda Corp, 2023 - Present
+- Wrote SQL queries against SQL Server to build weekly reports for clinical operations
+- Built Excel reports used by 3 business partners to track enrollment
+- Automated a manual reconciliation in Python, cutting 6 hours a week
+
+Operations Coordinator, City Events, 2021 - 2023
+- Coordinated 40+ events with vendors and clients
+
+SKILLS
+SQL, Python, Excel, Tableau, Power BI
+
+EDUCATION
+B.S. Information Science, Temple University
